@@ -1,6 +1,5 @@
 from datasets import load_dataset
 
-
 DATASET_NAME = "openlifescienceai/medmcqa"
 
 
