@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+
+# Environment variables / secrets
+.env
+
+# Tests / linting
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local datasets
+data/*
+!data/README.md
+
+# Model checkpoints
+checkpoints/*
+!checkpoints/.gitkeep
+
+# Experiment outputs
+outputs/*
+!outputs/.gitkeep
+
+# Training logs
+wandb/
+runs/
+
+# IDE
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
