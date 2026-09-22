@@ -19,6 +19,8 @@ __pycache__/
 # Local datasets
 data/*
 !data/README.md
+!data/retrieval_eval/
+!data/retrieval_eval/*.jsonl
 
 # Model checkpoints
 checkpoints/*
@@ -27,6 +29,12 @@ checkpoints/*
 # Experiment outputs
 outputs/*
 !outputs/.gitkeep
+
+# Large generated retrieval artifacts
+artifacts/
+indices/
+*.npy
+*.npz
 
 # Training logs
 wandb/
