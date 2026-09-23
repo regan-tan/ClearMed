@@ -17,6 +17,13 @@ Each example may contain:
 - subject metadata
 - topic metadata
 
+The verified dataset fields are `id`, `question`, `opa`, `opb`, `opc`,
+`opd`, `cop`, `choice_type`, `exp`, `subject_name`, and `topic_name`.
+`cop` is a class label with `a`, `b`, `c`, and `d`, corresponding to the
+canonical answer labels A through D. QA-valid examples require a question,
+four nonblank options, and a valid answer; explanation generation additionally
+requires a nonblank `exp` field. Official splits remain separate.
+
 ## Data Leakage Policy
 
 Only training-set examples and explanations may be used to construct
