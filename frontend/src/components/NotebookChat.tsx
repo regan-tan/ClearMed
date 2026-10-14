@@ -1,6 +1,7 @@
-import { ArrowUp, BookmarkPlus, FileText, History, Layers, Loader2, MessageSquare, SquarePen, Trash2 } from 'lucide-react'
+import { ArrowUp, BookmarkPlus, FileText, History, Layers, Loader2, MessageSquare, SquarePen } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { Citation, Conversation, NotebookMessage } from '../api/notebook'
+import { ChatHistoryList } from './ChatHistoryList'
 interface Props {
   chats: Conversation[]; activeId: string; sourceCount: number; busy: boolean; error: string | null
   onSend: (text: string) => void; onSave: (message: NotebookMessage) => void; onFlashcard: (message: NotebookMessage) => void
@@ -10,14 +11,6 @@ interface Props {
 
 const NO_MESSAGES: NotebookMessage[] = []
 
-function relativeTime(time: number) {
-  const minutes = Math.round((Date.now() - time) / 60_000)
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes} min ago`
-  if (minutes < 60 * 24) return `${Math.round(minutes / 60)} h ago`
-  return new Date(time).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
-}
-
 export function NotebookChat({ chats, activeId, sourceCount, busy, error, onSend, onSave, onFlashcard, onCitation, onSelectChat, onNewChat, onDeleteChat, onAdd, savedIds, flashcardIds }: Props) {
   const [input, setInput] = useState('')
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -25,7 +18,6 @@ export function NotebookChat({ chats, activeId, sourceCount, busy, error, onSend
   const textarea = useRef<HTMLTextAreaElement>(null)
   const active = chats.find(chat => chat.id === activeId)
   const messages = active?.messages ?? NO_MESSAGES
-  const history = [...chats].sort((a, b) => b.updatedAt - a.updatedAt)
   useEffect(() => { if (messages.length) bottom.current?.scrollIntoView({ block: 'nearest' }) }, [messages, busy])
   // Grow the composer with its content; CSS max-height caps it and scrolls beyond that.
   useEffect(() => { const el = textarea.current; if (!el) return; el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` }, [input])
@@ -34,16 +26,14 @@ export function NotebookChat({ chats, activeId, sourceCount, busy, error, onSend
     <div className="panel-heading">
       <h2 className="min-w-0"><span className="truncate">{active?.title ?? 'New chat'}</span></h2>
       <div className="flex shrink-0 items-center gap-1">
-        <button className="icon-button" onClick={() => setHistoryOpen(open => !open)} aria-expanded={historyOpen} aria-label="Chat history" title="Chat history"><History size={16} /></button>
+        {/* On wider screens chat history lives in the sidebar */}
+        <button className="icon-button history-toggle" onClick={() => setHistoryOpen(open => !open)} aria-expanded={historyOpen} aria-label="Chat history" title="Chat history"><History size={16} /></button>
         <button className="icon-button" disabled={!active} onClick={() => { onNewChat(); setHistoryOpen(false) }} aria-label="New chat" title="New chat"><SquarePen size={16} /></button>
       </div>
     </div>
     {historyOpen && <div className="chat-history" role="dialog" aria-label="Chat history">
       <p className="chat-history-title">Chat history</p>
-      {history.length ? <ul>{history.map(chat => <li key={chat.id} className={chat.id === activeId ? 'active' : ''}>
-        <button className="chat-history-item" onClick={() => { onSelectChat(chat.id); setHistoryOpen(false) }}><span className="truncate">{chat.title}</span><small>{relativeTime(chat.updatedAt)} · {chat.messages.length} message{chat.messages.length !== 1 ? 's' : ''}</small></button>
-        <button className="icon-button" aria-label={`Delete “${chat.title}”`} onClick={() => onDeleteChat(chat.id)}><Trash2 size={14} /></button>
-      </li>)}</ul> : <p className="chat-history-empty">Your conversations will appear here.</p>}
+      <ChatHistoryList chats={chats} activeId={activeId} onSelect={id => { onSelectChat(id); setHistoryOpen(false) }} onDelete={onDeleteChat} />
     </div>}
     <div className="conversation" onClick={() => setHistoryOpen(false)}>
       {!messages.length

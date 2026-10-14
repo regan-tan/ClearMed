@@ -13,18 +13,20 @@ npm run dev
 
 ## Current preview
 
-- Editable notebook title; light/dark themes (light by default).
+- Multiple notebooks: each has its own sources, chats, notes and flashcards. Switch, create, rename (edit the title in place) and delete from the menu next to the title. Practice MCQ progress, search settings and theme are shared.
+- Light/dark themes (light by default).
 - Notebook, Practice MCQ and Flashcards modes.
 - Multiple-file picker and drag/drop for PDF, DOCX, TXT and Markdown.
 - File type/size checks (non-empty, up to 20 MB), source selection, and deletion with confirmation (optionally removing flashcards made from the source).
 - Central chat with multiline input; works with or without selected sources (Enter sends, Shift+Enter adds a line).
-- Chat history: conversations are saved with a title; reopen or delete them from the history menu, or start a new chat.
+- VS Code-style left sidebar with collapsible **Sources** and **Chats** sections and a draggable divider between them (arrow keys also resize; double-click resets). Collapsed state and split are remembered.
+- Chat history: conversations are saved with a title; reopen, delete or start a new chat from the Chats section (or the history button on phones).
 - Save responses to notes or write your own notes.
 - Flashcards generated from selected sources, reviewed with a simple spaced-repetition schedule (Again / Got it). Ask follow-up questions about the card on screen. Chat answers and practice MCQs can also be added as cards in one click; cards can be deleted with undo.
 - Responsive layout: side panels become overlays on narrow screens.
 - Citation buttons and a passage viewer ready to render backend citations.
 
-**Files are only staged as metadata.** The preview does not read, upload, parse, embed or search file contents. Chat returns a clearly labelled interface preview with no fabricated citations. Generated flashcards are clearly labelled placeholders. Notebook state (title, source metadata, chats, notes, flashcards, practice answers) is saved in this browser's localStorage via `src/storage.ts`, so it survives refreshes but not clearing site data or switching devices. File size/type checks are convenience checks; the backend must validate uploads independently.
+**Files are only staged as metadata.** The preview does not read, upload, parse, embed or search file contents. Chat returns a clearly labelled interface preview with no fabricated citations. Generated flashcards are clearly labelled placeholders. Notebooks and their data (source metadata, chats, notes, flashcards), plus practice answers, are saved in this browser's localStorage via `src/storage.ts` and `src/notebooks.ts`. Data saved before notebooks existed is moved into a first notebook on load. It survives refreshes but not clearing site data or switching devices. File size/type checks are convenience checks; the backend must validate uploads independently.
 
 ## Backend integration
 
@@ -32,11 +34,15 @@ Start in [`src/api/notebook.ts`](src/api/notebook.ts). It defines `NotebookApi`,
 
 | Adapter method | Proposed endpoint (not implemented) | Contract |
 | --- | --- | --- |
-| `uploadSource(file)` | `POST /api/notebooks/:id/sources` | Send `File` as multipart FormData; return `NotebookSource` |
-| `listSources()` | `GET /api/notebooks/:id/sources` | Return `NotebookSource[]` |
-| `removeSource(id)` | `DELETE /api/notebooks/:id/sources/:sourceId` | Resolve after successful deletion |
-| `chat(request)` | `POST /api/notebooks/:id/chat` | Send message, selected source IDs, prior history and optional `context` (e.g. the flashcard being revised); return content and citations |
-| `generateFlashcards(request)` | `POST /api/notebooks/:id/flashcards` | Send source IDs; return `{ front, back, source_id, source_name }[]` written from those sources |
+| `listNotebooks()` | `GET /api/notebooks` | Return `NotebookSummary[]` (`id`, `title`, `createdAt`) |
+| `createNotebook(title)` | `POST /api/notebooks` | Return the new `NotebookSummary`; the app uses its `id` |
+| `renameNotebook(id, title)` | `PATCH /api/notebooks/:id` | Resolve after saving the title |
+| `deleteNotebook(id)` | `DELETE /api/notebooks/:id` | Delete the notebook and everything in it |
+| `uploadSource(id, file)` | `POST /api/notebooks/:id/sources` | Send `File` as multipart FormData; return `NotebookSource` |
+| `listSources(id)` | `GET /api/notebooks/:id/sources` | Return `NotebookSource[]` |
+| `removeSource(id, sourceId)` | `DELETE /api/notebooks/:id/sources/:sourceId` | Resolve after successful deletion |
+| `chat(id, request)` | `POST /api/notebooks/:id/chat` | Send message, selected source IDs, prior history and optional `context` (e.g. the flashcard being revised); return content and citations |
+| `generateFlashcards(id, request)` | `POST /api/notebooks/:id/flashcards` | Send source IDs; return `{ front, back, source_id, source_name }[]` written from those sources |
 
 These are proposed contracts, not claims about existing backend routes. Add notebook identity/authentication to your adapter when implementing persistence. Do not set a JSON Content-Type header for FormData uploads; the browser supplies the multipart boundary.
 
@@ -50,11 +56,12 @@ These are proposed contracts, not claims about existing backend routes. Add note
 {
   message: 'Explain this concept',
   source_ids: ['server-source-id'],
-  history: [{ role: 'user', content: 'Earlier question' }]
+  history: [{ role: 'user', content: 'Earlier question' }],
+  retrieval: { embedding_model: 'e5', top_k: 3 }
 }
 ```
 
-The current message is separate from history. `source_ids` may be empty: chat works without uploaded sources, and the backend should then answer without user material (no source citations). The server should validate source ownership and perform parsing, retrieval, ranking, generation and grounding. None of that belongs in this UI adapter.
+The current message is separate from history. `retrieval` carries the search settings from the header (also used for MCQ follow-ups). `source_ids` may be empty: chat works without uploaded sources, and the backend should then answer without user material (no source citations). The server should validate source ownership and perform parsing, retrieval, ranking, generation and grounding. None of that belongs in this UI adapter.
 
 Return:
 
@@ -76,12 +83,12 @@ Citation buttons open the passage in the right panel. Replies render as plain te
 
 - Replace the adapter, load existing notebook sources/messages, and implement processing status updates.
 - Replace the preview labels and local-only copy in `App.tsx`, `SourcesPanel.tsx`, `NotebookChat.tsx` and `FlashcardsView.tsx` with actual service state.
-- Move persistence from localStorage to the backend (notebook title, chats, notes, flashcards and review schedule). `usePersistentState` in `src/storage.ts` is the single place to swap out.
+- Move persistence from localStorage to the backend: load notebooks with `listNotebooks()`, then each notebook's sources, chats, notes and flashcards (with review schedule). Per-notebook state is read through `usePersistentState(notebookKey(id, …))` in `App.tsx`, the single place to swap out.
 - Add request cancellation/streaming if supported by your backend.
 
 ## Practice MCQ mode
 
-The header switch toggles between **Notebook**, **Practice MCQ** and **Flashcards**. Practice mode shows the question bank, the MCQ card (select an option, then *Check answer* to reveal the answer key and the model explanation) and a follow-up chat with retrieved evidence. The sliders button in the header opens the evidence settings (embedding model and top-k) used for follow-ups. Answers are saved locally, and an answered question can be added to flashcards.
+The header switch toggles between **Notebook**, **Practice MCQ** and **Flashcards**. Practice mode shows the question bank, the MCQ card (select an option, then *Check answer* to reveal the answer key and the model explanation) and a follow-up chat with retrieved evidence. The sliders button in the header opens the search settings (embedding model and top-k). They apply in every mode: notebook chat, flashcard questions and MCQ follow-ups. Answers are saved locally, and an answered question can be added to flashcards.
 
 Practice mode uses the MCQ adapter in [`src/api/client.ts`](src/api/client.ts) (types in [`src/api/types.ts`](src/api/types.ts)), which defaults to the mock in [`src/api/mock.ts`](src/api/mock.ts). Run with `VITE_USE_MOCK=false` to call the FastAPI backend; Vite proxies `/api/*` to `http://localhost:8000`.
 

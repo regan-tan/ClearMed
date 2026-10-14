@@ -1,9 +1,10 @@
 import { ArrowUp, FileText, Layers, Loader2, MessageSquare, RotateCcw, Search, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import { notebookApi, type NotebookMessage, type NotebookSource } from '../api/notebook'
+import { notebookApi, type NotebookMessage, type NotebookSource, type RetrievalSettings } from '../api/notebook'
 import { createCard, describeDue, nextInterval, reviewCard, type Flashcard } from '../flashcards'
 
 interface Props {
+  notebookId: string
   cards: Flashcard[]
   setCards: Dispatch<SetStateAction<Flashcard[]>>
   sources: NotebookSource[]
@@ -12,13 +13,14 @@ interface Props {
   onAddSources: (files: File[]) => void
   onRemoveSource: (id: string) => void
   uploading: boolean
+  retrieval: RetrievalSettings
 }
 
 function dueIds(cards: Flashcard[], now = Date.now()) {
   return cards.filter(card => card.due <= now).sort((a, b) => a.due - b.due).map(card => card.id)
 }
 
-export function FlashcardsView({ cards, setCards, sources, selected, onToggleSource, onAddSources, onRemoveSource, uploading }: Props) {
+export function FlashcardsView({ notebookId, cards, setCards, sources, selected, onToggleSource, onAddSources, onRemoveSource, uploading, retrieval }: Props) {
   const fileInput = useRef<HTMLInputElement>(null)
   const cardButton = useRef<HTMLButtonElement>(null)
   const [search, setSearch] = useState('')
@@ -44,7 +46,7 @@ export function FlashcardsView({ cards, setCards, sources, selected, onToggleSou
     if (generating || !chosen.length) return
     setGenerating(true); setGenerateError(null)
     try {
-      const generated = await notebookApi.generateFlashcards({ source_ids: chosen })
+      const generated = await notebookApi.generateFlashcards(notebookId, { source_ids: chosen })
       const fresh = generated.map(item => createCard({ front: item.front, back: item.back, sourceId: item.source_id, label: sources.find(source => source.id === item.source_id)?.name ?? item.source_name }))
       setCards(all => [...fresh, ...all])
       if (!cram) setQueue(q => [...q, ...fresh.map(card => card.id)])
@@ -143,7 +145,7 @@ export function FlashcardsView({ cards, setCards, sources, selected, onToggleSou
             <button className="primary" onClick={() => grade(true)}>Got it{!cram && <small>· {nextInterval(current)}</small>}<kbd>2</kbd></button>
           </div>}
           {/* key resets the conversation when the next card comes up */}
-          {flipped && <CardChat key={current.id} card={current} />}
+          {flipped && <CardChat key={current.id} notebookId={notebookId} card={current} retrieval={retrieval} />}
         </div>
         : <div className="flashcard-empty">
           <div className="notebook-emblem"><Layers size={28} strokeWidth={1.4} /></div>
@@ -169,7 +171,7 @@ export function FlashcardsView({ cards, setCards, sources, selected, onToggleSou
 }
 
 // Follow-up chat about the card on screen, grounded in the card's source when it has one.
-function CardChat({ card }: { card: Flashcard }) {
+function CardChat({ notebookId, card, retrieval }: { notebookId: string; card: Flashcard; retrieval: RetrievalSettings }) {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<NotebookMessage[]>([])
   const [input, setInput] = useState('')
@@ -182,7 +184,7 @@ function CardChat({ card }: { card: Flashcard }) {
     const history = messages.map(({ role, content }) => ({ role, content }))
     setMessages(current => [...current, { id: crypto.randomUUID(), role: 'user', content: message }]); setInput(''); setBusy(true); setError(null)
     try {
-      const response = await notebookApi.chat({ message, history, source_ids: card.sourceId ? [card.sourceId] : [], context: `Flashcard being revised.\nQuestion: ${card.front}\nAnswer: ${card.back}` })
+      const response = await notebookApi.chat(notebookId, { message, history, source_ids: card.sourceId ? [card.sourceId] : [], context: `Flashcard being revised.\nQuestion: ${card.front}\nAnswer: ${card.back}`, retrieval })
       setMessages(current => [...current, { id: crypto.randomUUID(), role: 'assistant', ...response }])
     } catch {
       setMessages(current => current.slice(0, -1)); setInput(message)

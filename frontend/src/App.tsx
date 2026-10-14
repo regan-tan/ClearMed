@@ -1,14 +1,16 @@
 import { BookOpen, FileText, Moon, NotebookPen, Plus, SlidersHorizontal, Sun, X } from 'lucide-react'
-import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { notebookApi, type Citation, type Conversation, type Note, type NotebookMessage, type NotebookSource } from './api/notebook'
 import type { EmbeddingModel } from './api/types'
-import { DeleteSourceDialog } from './components/DeleteSourceDialog'
+import { ConfirmDialog } from './components/ConfirmDialog'
 import { FlashcardsView } from './components/FlashcardsView'
 import { NotebookChat } from './components/NotebookChat'
+import { NotebookSidebar, type SidebarLayout } from './components/NotebookSidebar'
+import { NotebookSwitcher } from './components/NotebookSwitcher'
 import { PracticeView } from './components/PracticeView'
-import { SourcesPanel } from './components/SourcesPanel'
 import { StudioPanel } from './components/StudioPanel'
 import { createCard, type Flashcard, type FlashcardDraft } from './flashcards'
+import { createNotebookMeta, DEFAULT_TITLE, deleteNotebookData, notebookKey, notebookStats, type NotebookMeta } from './notebooks'
 import { usePersistentState } from './storage'
 import { useTheme } from './theme'
 
@@ -25,20 +27,30 @@ export default function App() {
   const [model, setModel] = usePersistentState<EmbeddingModel>('model', 'e5')
   const [topK, setTopK] = usePersistentState('top-k', 3)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [title, setTitle] = usePersistentState('title', 'Untitled notebook')
-  // Source metadata only: the preview never reads file contents. Use notebookApi.listSources() once a backend exists.
-  const [sources, setSources] = usePersistentState<NotebookSource[]>('sources', [])
-  const [selected, setSelected] = usePersistentState<string[]>('selected-sources', [])
-  const [chats, setChats] = usePersistentState<Conversation[]>('chats', [])
-  const [activeChatId, setActiveChatId] = usePersistentState('active-chat', '')
-  const [notes, setNotes] = usePersistentState<Note[]>('notes', [])
-  const [cards, setCards] = usePersistentState<Flashcard[]>('flashcards', [])
+  const [sidebarLayout, setSidebarLayout] = usePersistentState<SidebarLayout>('sidebar-layout', { sourcesOpen: true, chatsOpen: true, split: 0.55 })
+  const settingsRef = useRef<HTMLDivElement>(null)
+  const retrieval = { embedding_model: model, top_k: topK }
+  // Fallback only matters if storage is unavailable; ensureNotebooks() normally seeds the list at startup.
+  const [fallbackNotebook] = useState(createNotebookMeta)
+  const [storedNotebooks, setNotebooks] = usePersistentState<NotebookMeta[]>('notebooks', [])
+  const notebooks = storedNotebooks.length ? storedNotebooks : [fallbackNotebook]
+  const [activeNotebookId, setActiveNotebookId] = usePersistentState('active-notebook', '')
+  const notebook = notebooks.find(item => item.id === activeNotebookId) ?? notebooks[0]
+  const nb = notebook.id
+  // Per-notebook data. Source metadata only: the preview never reads file contents.
+  const [sources, setSources] = usePersistentState<NotebookSource[]>(notebookKey(nb, 'sources'), [])
+  const [selected, setSelected] = usePersistentState<string[]>(notebookKey(nb, 'selected-sources'), [])
+  const [chats, setChats] = usePersistentState<Conversation[]>(notebookKey(nb, 'chats'), [])
+  const [activeChatId, setActiveChatId] = usePersistentState(notebookKey(nb, 'active-chat'), '')
+  const [notes, setNotes] = usePersistentState<Note[]>(notebookKey(nb, 'notes'), [])
+  const [cards, setCards] = usePersistentState<Flashcard[]>(notebookKey(nb, 'flashcards'), [])
   const [citation, setCitation] = useState<Citation | null>(null)
   const [mobilePanel, setMobilePanel] = useState<'sources' | 'notes' | null>(null)
   const [uploading, setUploading] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
+  const [deletingNotebook, setDeletingNotebook] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
   const [noteDraft, setNoteDraft] = useState('')
@@ -48,9 +60,46 @@ export default function App() {
 
   const pendingSource = sources.find(source => source.id === pendingDelete)
   const activeChat = chats.find(chat => chat.id === activeChatId)
+  // Close the settings popover on Escape or a click outside it.
+  useEffect(() => {
+    if (!settingsOpen) return
+    function onPointer(e: MouseEvent) { if (!settingsRef.current?.contains(e.target as Node)) setSettingsOpen(false) }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setSettingsOpen(false) }
+    document.addEventListener('mousedown', onPointer); document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onPointer); document.removeEventListener('keydown', onKey) }
+  }, [settingsOpen])
   const closeDeleteDialog = useCallback(() => setPendingDelete(null), [])
+  const closeNotebookDialog = useCallback(() => setDeletingNotebook(false), [])
   const cardOrigins = cards.flatMap(card => card.origin ? [card.origin] : [])
 
+  function switchNotebook(id: string) {
+    setActiveNotebookId(id)
+    setCitation(null); setChatError(null); setError(null); setMobilePanel(null); setEditingNote(false); setNoteDraft('')
+  }
+  async function createNotebook() {
+    try {
+      const created = await notebookApi.createNotebook(DEFAULT_TITLE)
+      setNotebooks([...notebooks, { id: created.id, title: created.title, createdAt: created.createdAt }])
+      switchNotebook(created.id)
+      setMode('notebook')
+    } catch { setError('Could not create a notebook. Please try again.') }
+  }
+  function renameNotebook(title: string) {
+    setNotebooks(notebooks.map(item => item.id === nb ? { ...item, title } : item))
+    notebookApi.renameNotebook(nb, title).catch(() => setError('Could not save the notebook title.'))
+  }
+  async function deleteNotebook() {
+    setRemoving(true)
+    try {
+      await notebookApi.deleteNotebook(nb)
+      deleteNotebookData(nb)
+      const remaining = notebooks.filter(item => item.id !== nb)
+      const next = remaining.length ? remaining : [createNotebookMeta()]
+      setNotebooks(next)
+      switchNotebook(next[0].id)
+    } catch { setError('Could not delete the notebook. Please try again.') }
+    finally { setRemoving(false); setDeletingNotebook(false) }
+  }
   function addCard(draft: FlashcardDraft) {
     setCards(current => draft.origin && current.some(card => card.origin === draft.origin) ? current : [createCard(draft), ...current])
   }
@@ -63,7 +112,7 @@ export default function App() {
         if (!/\.(pdf|docx|txt|md)$/i.test(file.name)) { failures.push(`${file.name}: unsupported file type.`); continue }
         if (!file.size || file.size > 20 * 1024 * 1024) { failures.push(`${file.name}: choose a non-empty file under 20 MB.`); continue }
         try {
-          const source = await notebookApi.uploadSource(file)
+          const source = await notebookApi.uploadSource(nb, file)
           setSources(current => [...current, source])
           setSelected(current => [...current, source.id])
         } catch { failures.push(`${file.name}: couldn't add this source. Please try again.`) }
@@ -74,7 +123,7 @@ export default function App() {
   async function removeSource(id: string, deleteCards: boolean) {
     setRemoving(true)
     try {
-      await notebookApi.removeSource(id)
+      await notebookApi.removeSource(nb, id)
       setSources(current => current.filter(source => source.id !== id))
       setSelected(current => current.filter(sourceId => sourceId !== id))
       // Kept cards stay revisable but no longer ground follow-up questions in the deleted source.
@@ -101,13 +150,19 @@ export default function App() {
     if (activeChat) updateChat(chatId, messages => [...messages, user])
     else { setChats(current => [...current, { id: chatId, title: chatTitle(message), messages: [user], updatedAt: Date.now() }]); setActiveChatId(chatId) }
     try {
-      const response = await notebookApi.chat({ message, source_ids: [...selected], history })
+      const response = await notebookApi.chat(nb, { message, source_ids: [...selected], history, retrieval })
       updateChat(chatId, messages => [...messages, { id: crypto.randomUUID(), role: 'assistant', ...response }])
     } catch {
       updateChat(chatId, messages => messages.filter(item => item.id !== user.id))
       setChats(current => current.filter(chat => chat.messages.length))
       setChatError(`Couldn’t send your question. Please try again: “${message}”`)
     } finally { requestLock.current = false; setSending(false) }
+  }
+  function selectChat(id: string) { setActiveChatId(id); setChatError(null) }
+  function newChat() { setActiveChatId(''); setChatError(null) }
+  function deleteChat(id: string) {
+    setChats(current => current.filter(chat => chat.id !== id))
+    if (id === activeChatId) setActiveChatId('')
   }
   function flashcardFromMessage(message: NotebookMessage) {
     const messages = activeChat?.messages ?? []
@@ -123,23 +178,23 @@ export default function App() {
 
   return <div className="notebook-app">
     <header className="notebook-header">
-      <div className="header-start"><a href="#chat" className="notebook-brand"><span className="brand-symbol"><BookOpen size={22} /></span><span className="brand-name">ClearMed</span></a><span className="header-divider" /><input className="notebook-title" aria-label="Notebook title" value={title} onChange={e => setTitle(e.target.value)} onBlur={() => { if (!title.trim()) setTitle('Untitled notebook') }} /></div>
+      <div className="header-start"><a href="#chat" className="notebook-brand"><span className="brand-symbol"><BookOpen size={22} /></span>ClearMed</a><span className="header-divider" /><NotebookSwitcher notebooks={notebooks} activeId={nb} onRename={renameNotebook} onSelect={switchNotebook} onCreate={createNotebook} onDelete={() => setDeletingNotebook(true)} /></div>
       <div className="mode-switch" role="group" aria-label="Mode">{modes.map(({ value, label }) => <button key={value} aria-pressed={mode === value} onClick={() => { setMode(value); setSettingsOpen(false) }}>{label}</button>)}</div>
-      <div className="header-actions"><span className="preview-label">Frontend preview</span>{mode === 'practice' && <div className="settings-anchor"><button className="icon-button" onClick={() => setSettingsOpen(open => !open)} aria-label="Evidence settings" aria-expanded={settingsOpen} title="Evidence settings"><SlidersHorizontal size={18} /></button>{settingsOpen && <div className="settings-popover"><StudioPanel model={model} topK={topK} onModelChange={setModel} onTopKChange={setTopK} onCollapse={() => setSettingsOpen(false)} /></div>}</div>}<button className="icon-button" onClick={toggle} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button></div>
+      <div className="header-actions"><span className="preview-label">Frontend preview</span><div className="settings-anchor" ref={settingsRef}><button className="icon-button" onClick={() => setSettingsOpen(open => !open)} aria-label="Search settings" aria-expanded={settingsOpen} title="Search settings"><SlidersHorizontal size={18} /></button>{settingsOpen && <div className="settings-popover"><StudioPanel model={model} topK={topK} onModelChange={setModel} onTopKChange={setTopK} onCollapse={() => setSettingsOpen(false)} /></div>}</div><button className="icon-button" onClick={toggle} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button></div>
     </header>
     {error && <div className="upload-error" role="alert">{error}<button className="icon-button" onClick={() => setError(null)} aria-label="Dismiss error"><X size={16} /></button></div>}
     {/* Kept mounted so MCQ progress survives switching modes */}
     <div className="mode-view" hidden={mode !== 'practice'}><PracticeView model={model} topK={topK} flashcardOrigins={cardOrigins} onFlashcard={addCard} /></div>
-    {mode === 'flashcards' && <div className="mode-view"><FlashcardsView cards={cards} setCards={setCards} sources={sources} selected={selected} onToggleSource={toggleSource} onAddSources={addSources} onRemoveSource={setPendingDelete} uploading={uploading} /></div>}
+    {mode === 'flashcards' && <div className="mode-view"><FlashcardsView key={nb} notebookId={nb} cards={cards} setCards={setCards} sources={sources} selected={selected} onToggleSource={toggleSource} onAddSources={addSources} onRemoveSource={setPendingDelete} uploading={uploading} retrieval={retrieval} /></div>}
     {mode === 'notebook' && <>
-    <div className="mobile-panel-tabs"><button onClick={() => setMobilePanel(mobilePanel === 'sources' ? null : 'sources')} aria-expanded={mobilePanel === 'sources'}><FileText size={15} />Sources ({sources.length})</button><button onClick={() => setMobilePanel(mobilePanel === 'notes' ? null : 'notes')} aria-expanded={mobilePanel === 'notes'}><NotebookPen size={15} />Notes ({notes.length})</button></div>
+    <div className="mobile-panel-tabs"><button onClick={() => setMobilePanel(mobilePanel === 'sources' ? null : 'sources')} aria-expanded={mobilePanel === 'sources'}><FileText size={15} />Sources & chats</button><button onClick={() => setMobilePanel(mobilePanel === 'notes' ? null : 'notes')} aria-expanded={mobilePanel === 'notes'}><NotebookPen size={15} />Notes ({notes.length})</button></div>
     <main className="notebook-layout" id="chat">
-      <div className={`sources-slot ${mobilePanel === 'sources' ? 'mobile-visible' : ''}`}><SourcesPanel sources={sources} selected={selected} busy={uploading} onAdd={addSources} onToggle={toggleSource} onSelectAll={() => setSelected(selected.length === sources.length ? [] : sources.map(source => source.id))} onRemove={setPendingDelete} onClose={() => setMobilePanel(null)} /></div>
+      <div className={`sources-slot ${mobilePanel === 'sources' ? 'mobile-visible' : ''}`}><NotebookSidebar sources={sources} selected={selected} busy={uploading} onAdd={addSources} onToggle={toggleSource} onSelectAll={() => setSelected(selected.length === sources.length ? [] : sources.map(source => source.id))} onRemove={setPendingDelete} onClose={() => setMobilePanel(null)}
+        chats={chats} activeChatId={activeChatId} onSelectChat={selectChat} onNewChat={newChat} onDeleteChat={deleteChat} layout={sidebarLayout} onLayoutChange={setSidebarLayout} /></div>
       <NotebookChat chats={chats} activeId={activeChatId} sourceCount={selected.length} busy={sending} error={chatError} onSend={send}
         onSave={message => setNotes(current => current.some(note => note.id === message.id) ? current : [...current, { id: message.id, text: message.content }])}
         onFlashcard={flashcardFromMessage} onCitation={value => { setCitation(value); setMobilePanel('notes') }}
-        onSelectChat={id => { setActiveChatId(id); setChatError(null) }} onNewChat={() => { setActiveChatId(''); setChatError(null) }}
-        onDeleteChat={id => { setChats(current => current.filter(chat => chat.id !== id)); if (id === activeChatId) setActiveChatId('') }}
+        onSelectChat={selectChat} onNewChat={newChat} onDeleteChat={deleteChat}
         onAdd={() => { setMobilePanel('sources'); document.querySelector<HTMLInputElement>('input[type="file"]')?.click() }}
         savedIds={notes.map(note => note.id)} flashcardIds={cardOrigins.flatMap(origin => origin.startsWith('chat:') ? [origin.slice(5)] : [])} />
       <aside className={`notebook-panel notes-panel ${mobilePanel === 'notes' ? 'mobile-visible' : ''}`}><div className="panel-heading"><h2>{citation ? 'Source passage' : <>Notes <span className="count-badge">{notes.length}</span></>}</h2><button className={`icon-button ${citation ? '' : 'mobile-close'}`} aria-label={citation ? 'Close source passage' : 'Close notes'} onClick={() => { setCitation(null); setMobilePanel(null) }}><X size={16} /></button></div>
@@ -148,6 +203,17 @@ export default function App() {
       </aside>
     </main>
     </>}
-    {pendingSource && <DeleteSourceDialog source={pendingSource} cardCount={cards.filter(card => card.sourceId === pendingSource.id).length} busy={removing} onConfirm={deleteCards => removeSource(pendingSource.id, deleteCards)} onCancel={closeDeleteDialog} />}
+    {pendingSource && (() => {
+      const cardCount = cards.filter(card => card.sourceId === pendingSource.id).length
+      return <ConfirmDialog title="Delete this source?" confirmLabel="Delete source" busy={removing} option={cardCount ? `Also delete the ${cardCount} flashcard${cardCount !== 1 ? 's' : ''} made from it` : undefined} onConfirm={deleteCards => removeSource(pendingSource.id, deleteCards)} onCancel={closeDeleteDialog}>
+        <strong>{pendingSource.name}</strong> will be removed from this notebook and won’t be used to answer questions.
+      </ConfirmDialog>
+    })()}
+    {deletingNotebook && (() => {
+      const stats = notebookStats(nb)
+      return <ConfirmDialog title="Delete this notebook?" confirmLabel="Delete notebook" busy={removing} onConfirm={deleteNotebook} onCancel={closeNotebookDialog}>
+        <strong>{notebook.title}</strong> and everything in it will be deleted: {stats.sources} source{stats.sources !== 1 ? 's' : ''}, {stats.chats} chat{stats.chats !== 1 ? 's' : ''}, {notes.length} note{notes.length !== 1 ? 's' : ''} and {stats.cards} flashcard{stats.cards !== 1 ? 's' : ''}. This can’t be undone.
+      </ConfirmDialog>
+    })()}
   </div>
 }
