@@ -1,6 +1,6 @@
 import clsx from 'clsx'
-import { AlertTriangle, Loader2, MessageCircle, Send } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { AlertTriangle, ArrowUp, Loader2, MessageCircle } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from '../api/client'
 import type { ChatTurn, EmbeddingModel, Evidence, Question } from '../api/types'
 import { EvidenceList } from './EvidenceList'
@@ -14,18 +14,21 @@ interface Props {
   question: Question
   embeddingModel: EmbeddingModel
   topK: number
+  // Content shown above the conversation in the same scroll area (the MCQ card).
+  children?: ReactNode
 }
 
-const SUGGESTIONS = ['Why is this the right answer?', 'What happens if this goes wrong?', 'How is it treated?']
+const SUGGESTIONS = ['Explain the reasoning', 'Compare the options', 'Review the key concept']
 
-export function ChatPanel({ question, embeddingModel, topK }: Props) {
+export function ChatPanel({ question, embeddingModel, topK, children }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messages.length === 0 && !loading) return
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, loading])
 
   async function send(text: string) {
@@ -58,85 +61,101 @@ export function ChatPanel({ question, embeddingModel, topK }: Props) {
   }
 
   return (
-    <section className="flex min-h-[420px] flex-col rounded-2xl bg-white shadow-sm">
-      <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-3">
-        <MessageCircle className="h-4 w-4 text-brand-600" />
-        <h2 className="text-sm font-semibold">Ask a follow-up</h2>
+    // Keep the question, reasoning, and supporting evidence in one reading flow.
+    <section className="study-card flex flex-col bg-surface">
+      <div>
+        <div className="mx-auto max-w-3xl px-5 py-7 sm:px-10 sm:py-9">
+          {children}
+
+          {messages.length > 0 && (
+            <div className="mt-8 mb-5 flex items-center gap-3 text-xs font-medium text-fg-subtle">
+              <span className="h-px flex-1 bg-border" />
+              <MessageCircle className="h-3.5 w-3.5" /> Follow-up
+              <span className="h-px flex-1 bg-border" />
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {messages.map((m, i) =>
+              m.role === 'user' ? (
+                <div key={i} className="flex justify-end">
+                  <p className="max-w-[80%] rounded-2xl rounded-br-md bg-bubble-user px-4 py-2.5 text-sm text-bubble-user-fg">
+                    {m.content}
+                  </p>
+                </div>
+              ) : (
+                <div key={i} className="max-w-[90%]">
+                  <div
+                    className={clsx(
+                      'rounded-2xl rounded-bl-md px-4 py-3 text-sm leading-relaxed',
+                      m.fallback
+                        ? 'border border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100'
+                        : 'bg-subtle',
+                    )}
+                  >
+                    {m.fallback && (
+                      <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                        <AlertTriangle className="h-3.5 w-3.5" /> Insufficient evidence
+                      </p>
+                    )}
+                    {m.content}
+                  </div>
+                  {m.evidence && <EvidenceList evidence={m.evidence} />}
+                </div>
+              ),
+            )}
+
+            {loading && (
+              <p className="flex items-center gap-2 text-sm text-fg-muted">
+                <Loader2 className="h-4 w-4 animate-spin" /> Retrieving evidence…
+              </p>
+            )}
+            <div ref={bottomRef} />
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+      <div className="mx-auto w-full max-w-3xl px-5 pb-6 sm:px-10">
+        <div className="mb-3 border-t border-border pt-5"><h2 className="text-sm font-semibold">Talk through the reasoning</h2><p className="mt-1 text-xs text-fg-muted">Ask a follow-up and inspect the supporting passages.</p></div>
         {messages.length === 0 && (
-          <div className="py-6 text-center">
-            <p className="text-sm text-slate-500">Ask anything about this question. Answers are grounded in retrieved evidence.</p>
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => send(s)}
-                  className="rounded-full border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:border-brand-500 hover:text-brand-700"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+          <div className="mb-2.5 flex flex-wrap gap-2">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                onClick={() => send(s)}
+                className="rounded-md border border-border px-3 py-1.5 text-xs text-fg-muted transition hover:border-primary hover:text-accent"
+              >
+                {s}
+              </button>
+            ))}
           </div>
         )}
-
-        {messages.map((m, i) =>
-          m.role === 'user' ? (
-            <div key={i} className="flex justify-end">
-              <p className="max-w-[80%] rounded-2xl rounded-br-md bg-brand-600 px-4 py-2.5 text-sm text-white">{m.content}</p>
-            </div>
-          ) : (
-            <div key={i} className="max-w-[90%]">
-              <div
-                className={clsx(
-                  'rounded-2xl rounded-bl-md px-4 py-3 text-sm leading-relaxed',
-                  m.fallback ? 'border border-amber-200 bg-amber-50 text-amber-900' : 'bg-slate-100',
-                )}
-              >
-                {m.fallback && (
-                  <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-700">
-                    <AlertTriangle className="h-3.5 w-3.5" /> Insufficient evidence
-                  </p>
-                )}
-                {m.content}
-              </div>
-              {m.evidence && <EvidenceList evidence={m.evidence} />}
-            </div>
-          ),
-        )}
-
-        {loading && (
-          <p className="flex items-center gap-2 text-sm text-slate-500">
-            <Loader2 className="h-4 w-4 animate-spin" /> Retrieving evidence…
-          </p>
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          send(input)
-        }}
-        className="flex gap-2 border-t border-slate-100 p-3"
-      >
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="e.g. What does injury to this nerve cause?"
-          className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
-        />
-        <button
-          type="submit"
-          disabled={!input.trim() || loading}
-          className="flex items-center justify-center rounded-xl bg-brand-600 px-4 text-white transition hover:bg-brand-700 disabled:opacity-40"
-          aria-label="Send"
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            send(input)
+          }}
+          className="notebook-composer"
         >
-          <Send className="h-4 w-4" />
-        </button>
-      </form>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            aria-label="Follow-up question"
+            placeholder="What would you like to understand?"
+            className="min-w-0 flex-1 bg-transparent py-1.5 text-sm outline-none placeholder:text-fg-subtle"
+          />
+          <button
+            type="submit"
+            disabled={!input.trim() || loading}
+            aria-label="Send"
+          >
+            <ArrowUp className="h-[18px] w-[18px]" />
+          </button>
+        </form>
+        <p className="mx-1 mt-2 text-[11px] text-fg-muted">
+          Educational research prototype. Not for diagnosis, treatment or clinical decision-making.
+        </p>
+      </div>
     </section>
   )
 }

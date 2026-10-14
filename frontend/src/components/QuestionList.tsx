@@ -1,42 +1,25 @@
-import clsx from 'clsx'
-import { BookOpen } from 'lucide-react'
-import type { Question } from '../api/types'
+import { Check, Search, X } from 'lucide-react'
+import { useState } from 'react'
+import type { OptionKey, Question } from '../api/types'
 
 interface Props {
   questions: Question[]
   activeId: string | null
+  answers: Record<string, OptionKey>
   onSelect: (id: string) => void
+  onCollapse: () => void
 }
 
-export function QuestionList({ questions, activeId, onSelect }: Props) {
-  return (
-    <aside className="flex h-full flex-col rounded-2xl bg-white shadow-sm">
-      <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
-        <BookOpen className="h-4 w-4 text-brand-600" />
-        <h2 className="text-sm font-semibold">Question bank</h2>
-        <span className="ml-auto text-xs text-slate-400">{questions.length}</span>
-      </div>
-      <ul className="flex-1 space-y-1 overflow-y-auto p-2">
-        {questions.map((q, i) => (
-          <li key={q.id}>
-            <button
-              onClick={() => onSelect(q.id)}
-              className={clsx(
-                'w-full rounded-xl px-3 py-2.5 text-left transition',
-                q.id === activeId ? 'bg-brand-50 ring-1 ring-brand-100' : 'hover:bg-slate-50',
-              )}
-            >
-              <span className="text-[11px] font-medium uppercase tracking-wide text-brand-600">
-                {q.subject}
-              </span>
-              <p className="mt-0.5 line-clamp-2 text-sm text-slate-700">
-                <span className="text-slate-400">Q{i + 1}. </span>
-                {q.question}
-              </p>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </aside>
-  )
+export function QuestionList({ questions, activeId, answers, onSelect, onCollapse }: Props) {
+  const [search, setSearch] = useState('')
+  const filtered = questions.filter(q => `${q.subject} ${q.topic ?? ''} ${q.question}`.toLowerCase().includes(search.toLowerCase()))
+  return <nav className="question-bank" aria-label="Question bank">
+    <div className="question-bank-heading"><h2 className="flex items-center gap-2 text-sm font-semibold">Question bank <span className="count-badge">{questions.length}</span></h2><button onClick={onCollapse} className="min-[901px]:hidden utility-button" aria-label="Close question bank"><X size={16} /></button></div>
+    <label className="question-search"><Search size={15} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Find a topic or question" aria-label="Search questions" /></label>
+    <ul className="question-items">{filtered.map(q => {
+      const answered = answers[q.id] !== undefined
+      return <li key={q.id}><button className={`question-link ${q.id === activeId ? 'active' : ''}`} aria-current={q.id === activeId ? 'step' : undefined} onClick={() => onSelect(q.id)}><span className={`question-number ${answered ? 'completed' : ''}`}>{answered ? <Check size={14} /> : String(questions.indexOf(q) + 1).padStart(2, '0')}</span><span className="min-w-0"><span className="block text-xs font-semibold mb-1">{q.subject}</span><span className="line-clamp-2 text-xs leading-relaxed text-fg-muted">{q.question}</span>{answered && <span className="block mt-1 text-[11px] text-accent">{answers[q.id] === q.correct ? 'Correct' : 'Review answer'}</span>}</span></button></li>
+    })}</ul>
+    {!filtered.length && <p className="py-6 text-sm text-fg-muted">No matches. Try another topic.</p>}
+  </nav>
 }

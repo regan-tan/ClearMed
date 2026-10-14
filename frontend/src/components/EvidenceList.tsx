@@ -10,7 +10,8 @@ export function EvidenceList({ evidence }: { evidence: Evidence[] }) {
     <div className="mt-2">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
+        aria-expanded={open}
+        className="flex items-center gap-1 text-xs font-medium text-fg-muted hover:text-fg"
       >
         <FileText className="h-3.5 w-3.5" />
         {evidence.length} retrieved passage{evidence.length > 1 && 's'}
@@ -19,14 +20,14 @@ export function EvidenceList({ evidence }: { evidence: Evidence[] }) {
       {open && (
         <ol className="mt-2 space-y-2">
           {evidence.map((e, i) => (
-            <li key={e.id} className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
-              <div className="flex items-center gap-2 text-slate-500">
-                <span className="font-semibold text-slate-700">[{i + 1}]</span>
+            <li key={e.id} className="rounded-lg border border-border bg-surface p-3 text-xs">
+              <div className="flex flex-wrap items-center gap-2 text-fg-muted">
+                <span className="font-semibold text-fg">[{i + 1}]</span>
                 <span>{e.subject}</span>
-                <span className="font-mono text-slate-400">{e.id}</span>
+                <span className="font-mono text-fg-subtle">{e.id}</span>
                 <span className="ml-auto font-mono">score {e.score.toFixed(3)}</span>
               </div>
-              <p className="mt-1.5 leading-relaxed text-slate-700">{e.text}</p>
+              <p className="mt-1.5 leading-relaxed text-fg">{e.text}</p>
             </li>
           ))}
         </ol>
