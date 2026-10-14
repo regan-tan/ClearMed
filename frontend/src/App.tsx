@@ -1,8 +1,9 @@
 import { FileText, NotebookPen, X } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState, type CSSProperties } from 'react'
 import { notebookApi, type Citation } from './api/notebook'
 import type { EmbeddingModel } from './api/types'
 import { AppHeader, type Mode } from './components/AppHeader'
+import { ColumnResizer } from './components/ColumnResizer'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { FlashcardsView } from './components/FlashcardsView'
 import { NotebookChat } from './components/NotebookChat'
@@ -25,6 +26,8 @@ export default function App() {
     chatsOpen: true,
     split: 0.55,
   })
+  const [columns, setColumns] = usePersistentState('column-widths', DEFAULT_COLUMNS)
+  const layoutRef = useRef<HTMLElement>(null)
 
   // Fallback only matters if storage is unavailable; ensureNotebooks() normally seeds the list at startup.
   const [fallbackNotebook] = useState(createNotebookMeta)
@@ -162,7 +165,12 @@ export default function App() {
               Notes ({nb.notes.length})
             </button>
           </div>
-          <main className="notebook-layout" id="chat">
+          <main
+            className="notebook-layout"
+            id="chat"
+            ref={layoutRef}
+            style={{ '--sidebar-w': `${columns.sidebar}px`, '--notes-w': `${columns.notes}px` } as CSSProperties}
+          >
             <div className={`sources-slot ${mobilePanel === 'sources' ? 'mobile-visible' : ''}`}>
               <NotebookSidebar
                 sources={nb.sources}
@@ -182,6 +190,15 @@ export default function App() {
                 onLayoutChange={setSidebarLayout}
               />
             </div>
+            <ColumnResizer
+              label="Resize sources and chats panel"
+              side="left"
+              width={columns.sidebar}
+              min={MIN_COLUMNS.sidebar}
+              getMax={() => columnMax(layoutRef.current, '.sources-slot')}
+              defaultWidth={DEFAULT_COLUMNS.sidebar}
+              onChange={sidebar => setColumns(current => ({ ...current, sidebar }))}
+            />
             <NotebookChat
               chats={nb.chats}
               activeId={nb.activeChatId}
@@ -204,6 +221,15 @@ export default function App() {
               }}
               savedIds={nb.notes.map(note => note.id)}
               flashcardIds={nb.cardOrigins.flatMap(origin => (origin.startsWith('chat:') ? [origin.slice(5)] : []))}
+            />
+            <ColumnResizer
+              label="Resize notes panel"
+              side="right"
+              width={columns.notes}
+              min={MIN_COLUMNS.notes}
+              getMax={() => columnMax(layoutRef.current, '.notes-panel')}
+              defaultWidth={DEFAULT_COLUMNS.notes}
+              onChange={notes => setColumns(current => ({ ...current, notes }))}
             />
             <NotesPanel
               key={notebook.id}
@@ -246,6 +272,19 @@ export default function App() {
       )}
     </div>
   )
+}
+
+const DEFAULT_COLUMNS = { sidebar: 280, notes: 280 }
+const MIN_COLUMNS = { sidebar: 200, notes: 220 }
+const MAX_COLUMN = 640
+const MIN_CHAT = 360
+
+// A side panel may only grow into the space the chat column can spare.
+function columnMax(layout: HTMLElement | null, panelSelector: string) {
+  const panel = layout?.querySelector<HTMLElement>(panelSelector)
+  const chat = layout?.querySelector<HTMLElement>('.notebook-chat')
+  if (!panel || !chat) return MAX_COLUMN
+  return Math.min(MAX_COLUMN, panel.offsetWidth + chat.offsetWidth - MIN_CHAT)
 }
 
 function sourceCardsOption(cardCount: number) {

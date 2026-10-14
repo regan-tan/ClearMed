@@ -1,4 +1,4 @@
-import { Check, ChevronDown, NotebookTabs, Plus, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, NotebookTabs, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { useDismiss } from '../hooks/useDismiss'
 import { DEFAULT_TITLE, notebookStats, type NotebookMeta } from '../notebooks'
@@ -36,9 +36,11 @@ export function NotebookSwitcher({ notebooks, activeId, onRename, onSelect, onCr
     if (title !== active?.title) onRename(title)
   }
 
-  const titleInput = (className: string) => (
+  const titleInput = (className: string, size?: number) => (
     <input
       className={className}
+      size={size}
+      title={className === 'notebook-title' ? 'Click to rename' : undefined}
       aria-label="Notebook title"
       value={draft}
       onChange={e => setDraft(e.target.value)}
@@ -51,7 +53,11 @@ export function NotebookSwitcher({ notebooks, activeId, onRename, onSelect, onCr
 
   return (
     <div className="notebook-switcher" ref={root}>
-      {titleInput('notebook-title')}
+      {/* Label so clicking the pencil focuses the title; size is a fallback for browsers without field-sizing. */}
+      <label className="notebook-title-field">
+        {titleInput('notebook-title', Math.max(draft.length, 6))}
+        <Pencil size={13} className="notebook-title-pencil" aria-hidden="true" />
+      </label>
       <button
         className="icon-button switcher-toggle"
         onClick={() => setOpen(value => !value)}

@@ -22,6 +22,7 @@
   /* Layout metrics shared by the header and the overlay panels positioned below it */
   --header-h: 64px;
   --tabs-h: 44px;
+  --panel-header-h: 52px;
   --gutter: 16px;
   --radius-panel: 12px;
   --radius-control: 8px;
@@ -155,35 +156,78 @@
     background: var(--border);
     flex-shrink: 0;
   }
-  .notebook-title {
-    min-width: 0;
-    font-size: 14px;
-    font-weight: 500;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    padding: 6px 8px;
-  }
-  .notebook-title:hover,
-  .notebook-title:focus {
-    border-color: var(--border);
-  }
+  /* Title and menu toggle read as one outlined control, so the title looks editable at rest. */
   .notebook-switcher {
     position: relative;
     display: flex;
     align-items: center;
-    gap: 2px;
     min-width: 0;
-    flex: 0 1 340px;
+    max-width: 360px;
+    height: 34px;
+    padding-right: 3px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    transition:
+      border-color 0.15s,
+      background 0.15s;
   }
-  .notebook-switcher .notebook-title {
-    flex: 1;
+  .notebook-switcher:hover {
+    border-color: var(--accent-ring);
+    background: var(--surface);
+  }
+  .notebook-title-field {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    height: 100%;
+    padding-right: 6px;
+    margin-right: 3px;
+    border-right: 1px solid var(--border);
+    cursor: text;
+  }
+  .notebook-title-pencil {
+    flex-shrink: 0;
+    color: var(--fg-subtle);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .notebook-title-field:hover .notebook-title-pencil {
+    opacity: 1;
+  }
+  .notebook-title-field:focus-within .notebook-title-pencil {
+    opacity: 0;
+  }
+  .notebook-switcher:focus-within {
+    border-color: var(--accent-ring);
+    background: var(--surface);
+  }
+  .notebook-title {
+    flex: 0 1 auto;
+    min-width: 6ch;
+    height: 100%;
+    font-size: 14px;
+    font-weight: 550;
+    color: var(--fg);
+    background: transparent;
+    border: 0;
+    padding: 0 4px 0 10px;
+    text-overflow: ellipsis;
+    cursor: text;
+    field-sizing: content;
+  }
+  .notebook-title:focus-visible {
+    outline: none;
   }
   .switcher-toggle {
     width: auto;
-    min-width: 28px;
-    padding: 0 6px;
+    height: 26px;
+    min-width: 26px;
+    padding: 0 4px;
     gap: 4px;
+  }
+  .switcher-toggle[aria-expanded='true'] {
+    background: var(--subtle);
+    color: var(--fg);
   }
   .switcher-toggle svg {
     flex-shrink: 0;
@@ -193,7 +237,7 @@
   }
   .notebook-menu {
     position: absolute;
-    top: calc(100% + 8px);
+    top: calc(100% + 6px);
     left: 0;
     z-index: 10;
     width: 320px;
@@ -342,9 +386,14 @@
 
   /* Panels */
   .notebook-layout {
+    --sidebar-w: 280px;
+    --notes-w: 280px;
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr) 280px;
-    gap: 12px;
+    /* The 12px tracks hold the column resizers and double as the gap between panels.
+       The chat minimum matches MIN_CHAT in App.tsx so a narrowed window can't squeeze it out. */
+    grid-template-columns:
+      minmax(200px, var(--sidebar-w)) 12px minmax(360px, 1fr)
+      12px minmax(220px, var(--notes-w));
     padding: 0 var(--gutter) var(--gutter);
     flex: 1;
     min-height: 0;
@@ -365,7 +414,7 @@
     height: 100%;
   }
   .panel-heading {
-    min-height: 52px;
+    min-height: var(--panel-header-h);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -415,7 +464,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    height: 40px;
+    height: var(--panel-header-h);
     padding: 0 8px 0 6px;
   }
   .sidebar-section.open .sidebar-section-header {
@@ -486,6 +535,33 @@
   }
   .sidebar-resizer:focus-visible {
     outline: none;
+  }
+  .column-resizer {
+    position: relative;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .column-resizer::after {
+    content: '';
+    position: absolute;
+    inset: 0 4px;
+    border-radius: 2px;
+    background: transparent;
+    transition: background 0.15s;
+  }
+  .column-resizer:hover::after,
+  .column-resizer:focus-visible::after,
+  .column-resizer:active::after {
+    background: var(--accent);
+  }
+  .column-resizer:focus-visible {
+    outline: none;
+  }
+  /* Keep the resize cursor and stop text selection while dragging, even off the handle. */
+  .col-resizing,
+  .col-resizing * {
+    cursor: col-resize !important;
+    user-select: none !important;
   }
   .sources-drop {
     min-height: 100%;
@@ -1722,7 +1798,10 @@
 }
 @media (max-width: 1150px) {
   .notebook-layout {
-    grid-template-columns: 250px minmax(0, 1fr);
+    grid-template-columns: minmax(200px, var(--sidebar-w)) 12px minmax(360px, 1fr);
+  }
+  .column-resizer.right {
+    display: none;
   }
   .notes-panel {
     display: none;
@@ -1795,13 +1874,14 @@
     font-size: 17px;
   }
   .header-divider,
-  .notebook-title,
+  .notebook-title-field,
   .preview-label {
     display: none;
   }
   .notebook-switcher {
     flex: 0 0 auto;
     position: static;
+    padding: 0 3px;
   }
   .switcher-mobile-icon {
     display: block;
@@ -1840,7 +1920,8 @@
   .notebook-chat {
     width: 100%;
   }
-  .sources-slot {
+  .sources-slot,
+  .column-resizer {
     display: none;
   }
   .history-toggle {
