@@ -1,6 +1,7 @@
 import { FileText, NotebookPen, Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import type { Citation, Note } from '../api/notebook'
+import { Markdown } from './Markdown'
 
 interface Props {
   notes: Note[]
@@ -111,7 +112,7 @@ export function NotesPanel({
                         <X size={13} />
                       </button>
                     </div>
-                    <p>{note.text}</p>
+                    <Markdown className="study-note-text">{note.text}</Markdown>
                   </article>
                 ))
               : !editing && (

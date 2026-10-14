@@ -1,8 +1,9 @@
-import { FileText, NotebookPen, X } from 'lucide-react'
-import { useCallback, useState } from 'react'
-import { notebookApi, type Citation } from './api/notebook'
+import { FileText, Loader2, NotebookPen, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { notebookApi, type Citation, type NotebookSummary } from './api/notebook'
 import type { EmbeddingModel } from './api/types'
 import { AppHeader, type Mode } from './components/AppHeader'
+import { ColumnResizer } from './components/ColumnResizer'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { FlashcardsView } from './components/FlashcardsView'
 import { NotebookChat } from './components/NotebookChat'
@@ -25,6 +26,9 @@ export default function App() {
     chatsOpen: true,
     split: 0.55,
   })
+  const [columns, setColumns] = usePersistentState('column-widths', DEFAULT_COLUMNS)
+  const layoutRef = useRef<HTMLElement>(null)
+  const sourceInput = useRef<HTMLInputElement>(null)
 
   // Fallback only matters if storage is unavailable; ensureNotebooks() normally seeds the list at startup.
   const [fallbackNotebook] = useState(createNotebookMeta)
@@ -32,6 +36,41 @@ export default function App() {
   const notebooks = storedNotebooks.length ? storedNotebooks : [fallbackNotebook]
   const [activeNotebookId, setActiveNotebookId] = usePersistentState('active-notebook', '')
   const notebook = notebooks.find(item => item.id === activeNotebookId) ?? notebooks[0]
+
+  // With a real backend the server owns the notebook list; the preview keeps it in this browser.
+  const [notebooksAttempt, setNotebooksAttempt] = useState(0)
+  const [notebooksResult, setNotebooksResult] = useState({ attempt: -1, failed: false })
+  const notebooksState = notebookApi.preview
+    ? 'ready'
+    : notebooksResult.attempt !== notebooksAttempt
+      ? 'loading'
+      : notebooksResult.failed
+        ? 'error'
+        : 'ready'
+  // Shared across StrictMode's double effect run so an empty account gets exactly one first notebook.
+  const firstNotebook = useRef<Promise<NotebookSummary> | null>(null)
+  useEffect(() => {
+    if (notebookApi.preview) return
+    let cancelled = false
+    notebookApi
+      .listNotebooks()
+      .then(async list => {
+        if (list.length) return list
+        firstNotebook.current ??= notebookApi.createNotebook(DEFAULT_TITLE)
+        return [await firstNotebook.current]
+      })
+      .then(list => {
+        if (cancelled) return
+        setNotebooks(list.map(({ id, title, createdAt }) => ({ id, title, createdAt })))
+        setNotebooksResult({ attempt: notebooksAttempt, failed: false })
+      })
+      .catch(() => {
+        if (!cancelled) setNotebooksResult({ attempt: notebooksAttempt, failed: true })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [notebooksAttempt, setNotebooks])
 
   const retrieval = { embedding_model: model, top_k: topK }
   const [error, setError] = useState<string | null>(null)
@@ -126,7 +165,25 @@ export default function App() {
         <PracticeView model={model} topK={topK} flashcardOrigins={nb.cardOrigins} onFlashcard={nb.addCard} />
       </div>
 
-      {mode === 'flashcards' && (
+      {mode !== 'practice' && notebooksState !== 'ready' && (
+        <main className="app-status" role={notebooksState === 'error' ? 'alert' : 'status'}>
+          {notebooksState === 'loading' ? (
+            <>
+              <Loader2 size={18} className="animate-spin" />
+              Loading your notebooks…
+            </>
+          ) : (
+            <>
+              Couldn’t load your notebooks.
+              <button className="text-link" onClick={() => setNotebooksAttempt(n => n + 1)}>
+                Try again
+              </button>
+            </>
+          )}
+        </main>
+      )}
+
+      {mode === 'flashcards' && notebooksState === 'ready' && (
         <div className="mode-view">
           <FlashcardsView
             key={notebook.id}
@@ -144,7 +201,7 @@ export default function App() {
         </div>
       )}
 
-      {mode === 'notebook' && (
+      {mode === 'notebook' && notebooksState === 'ready' && (
         <>
           <div className="mobile-panel-tabs">
             <button
@@ -162,11 +219,16 @@ export default function App() {
               Notes ({nb.notes.length})
             </button>
           </div>
-          <main className="notebook-layout" id="chat">
+          <main
+            className="notebook-layout"
+            id="chat"
+            ref={layoutRef}
+            style={{ '--sidebar-w': `${columns.sidebar}px`, '--notes-w': `${columns.notes}px` } as CSSProperties}
+          >
             <div className={`sources-slot ${mobilePanel === 'sources' ? 'mobile-visible' : ''}`}>
               <NotebookSidebar
                 sources={nb.sources}
-                selected={nb.selected}
+                selected={nb.readySelected}
                 busy={nb.uploading}
                 onAdd={nb.addSources}
                 onToggle={nb.toggleSource}
@@ -180,12 +242,25 @@ export default function App() {
                 onDeleteChat={nb.deleteChat}
                 layout={sidebarLayout}
                 onLayoutChange={setSidebarLayout}
+                fileInput={sourceInput}
+                loading={nb.sourcesLoading}
+                loadFailed={nb.sourcesFailed}
+                onRetryLoad={nb.retrySources}
               />
             </div>
+            <ColumnResizer
+              label="Resize sources and chats panel"
+              side="left"
+              width={columns.sidebar}
+              min={MIN_COLUMNS.sidebar}
+              getMax={() => columnMax(layoutRef.current, '.sources-slot')}
+              defaultWidth={DEFAULT_COLUMNS.sidebar}
+              onChange={sidebar => setColumns(current => ({ ...current, sidebar }))}
+            />
             <NotebookChat
               chats={nb.chats}
               activeId={nb.activeChatId}
-              sourceCount={nb.selected.length}
+              sourceCount={nb.readySelected.length}
               busy={nb.sending}
               error={nb.chatError}
               onSend={nb.send}
@@ -200,10 +275,19 @@ export default function App() {
               onDeleteChat={nb.deleteChat}
               onAdd={() => {
                 setMobilePanel('sources')
-                document.querySelector<HTMLInputElement>('input[type="file"]')?.click()
+                sourceInput.current?.click()
               }}
               savedIds={nb.notes.map(note => note.id)}
               flashcardIds={nb.cardOrigins.flatMap(origin => (origin.startsWith('chat:') ? [origin.slice(5)] : []))}
+            />
+            <ColumnResizer
+              label="Resize notes panel"
+              side="right"
+              width={columns.notes}
+              min={MIN_COLUMNS.notes}
+              getMax={() => columnMax(layoutRef.current, '.notes-panel')}
+              defaultWidth={DEFAULT_COLUMNS.notes}
+              onChange={notes => setColumns(current => ({ ...current, notes }))}
             />
             <NotesPanel
               key={notebook.id}
@@ -246,6 +330,19 @@ export default function App() {
       )}
     </div>
   )
+}
+
+const DEFAULT_COLUMNS = { sidebar: 280, notes: 280 }
+const MIN_COLUMNS = { sidebar: 200, notes: 220 }
+const MAX_COLUMN = 640
+const MIN_CHAT = 360
+
+// A side panel may only grow into the space the chat column can spare.
+function columnMax(layout: HTMLElement | null, panelSelector: string) {
+  const panel = layout?.querySelector<HTMLElement>(panelSelector)
+  const chat = layout?.querySelector<HTMLElement>('.notebook-chat')
+  if (!panel || !chat) return MAX_COLUMN
+  return Math.min(MAX_COLUMN, panel.offsetWidth + chat.offsetWidth - MIN_CHAT)
 }
 
 function sourceCardsOption(cardCount: number) {

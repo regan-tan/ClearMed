@@ -1,9 +1,10 @@
 import { ArrowUp, BookmarkPlus, FileText, History, Layers, Loader2, MessageSquare, SquarePen } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Citation, Conversation, NotebookMessage } from '../api/notebook'
+import { notebookApi, type Citation, type Conversation, type NotebookMessage } from '../api/notebook'
 import { useDismiss } from '../hooks/useDismiss'
 import { plural } from '../utils'
 import { ChatHistoryList } from './ChatHistoryList'
+import { Markdown } from './Markdown'
 interface Props {
   chats: Conversation[]
   activeId: string
@@ -151,9 +152,13 @@ export function NotebookChat({
               <article key={message.id} className={`notebook-message ${message.role}`}>
                 <p className="message-author">
                   {message.role === 'user' ? 'You' : 'ClearMed'}
-                  {message.role === 'assistant' && <span>Interface preview</span>}
+                  {message.role === 'assistant' && notebookApi.preview && <span>Interface preview</span>}
                 </p>
-                <p className="message-content">{message.content}</p>
+                {message.role === 'assistant' ? (
+                  <Markdown className="message-content">{message.content}</Markdown>
+                ) : (
+                  <p className="message-content">{message.content}</p>
+                )}
                 {message.citations?.length ? (
                   <div className="citation-links">
                     {message.citations.map((citation, index) => (
@@ -236,7 +241,9 @@ export function NotebookChat({
             <FileText size={12} />
             {sourceCount ? `${plural(sourceCount, 'source')} selected` : 'No sources selected'}
           </span>
-          <span>Preview responses only · not for clinical decisions</span>
+          <span>
+            {notebookApi.preview ? 'Preview responses only' : 'Educational use only'} · not for clinical decisions
+          </span>
         </p>
       </div>
     </section>

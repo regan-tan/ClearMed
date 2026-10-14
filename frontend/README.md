@@ -14,12 +14,13 @@ npm run dev
 ## Current preview
 
 - Multiple notebooks: each has its own sources, chats, notes and flashcards. Switch, create, rename (edit the title in place) and delete from the menu next to the title. Practice MCQ progress, search settings and theme are shared.
-- Light/dark themes (light by default).
+- Light/dark themes (follows the system setting until you pick one).
 - Notebook, Practice MCQ and Flashcards modes.
 - Multiple-file picker and drag/drop for PDF, DOCX, TXT and Markdown.
 - File type/size checks (non-empty, up to 20 MB), source selection, and deletion with confirmation (optionally removing flashcards made from the source).
 - Central chat with multiline input; works with or without selected sources (Enter sends, Shift+Enter adds a line).
 - VS Code-style left sidebar with collapsible **Sources** and **Chats** sections and a draggable divider between them (arrow keys also resize; double-click resets). Collapsed state and split are remembered.
+- Resizable columns: drag the dividers between the sidebar, chat and notes panels (arrow keys also resize; double-click resets to 280px). Widths are remembered, and the chat column always keeps at least 360px.
 - Chat history: conversations are saved with a title; reopen, delete or start a new chat from the Chats section (or the history button on phones).
 - Save responses to notes or write your own notes.
 - Flashcards generated from selected sources, reviewed with a simple spaced-repetition schedule (Again / Got it). Ask follow-up questions about the card on screen. Chat answers and practice MCQs can also be added as cards in one click; cards can be deleted with undo.
@@ -48,7 +49,7 @@ These are proposed contracts, not claims about existing backend routes. Add note
 
 ### Source lifecycle
 
-`status` supports `staged`, `processing`, `ready`, and `error`; `error` optionally contains a useful message. The preview selects staged sources to demonstrate the conversation flow. With real ingestion, call `listSources()` on notebook load, poll or subscribe while sources are processing, and only send ready source IDs. The current app deliberately does not poll a backend that does not exist.
+`status` supports `staged`, `processing`, `ready`, and `error`; `error` optionally contains a useful message. Only `ready` sources (and `staged` ones in the preview) can be ticked or sent with a request; processing sources show a spinner and failed ones show their error with a prompt to remove and re-upload. With a real adapter, `useNotebook` loads the source list with `listSources()` whenever a notebook opens (with loading and retry states), polls it every 3 seconds while any source is `processing`, and ticks sources as they become ready.
 
 ### Chat contract
 
@@ -77,13 +78,12 @@ Return:
 }
 ```
 
-Citation buttons open the passage in the right panel. Replies render as plain text (including newlines), not unsanitized HTML. Errors are displayed without dropping earlier conversation; source selection is captured when the request is sent.
+Citation buttons open the passage in the right panel. Assistant replies, MCQ explanations, notes and flashcard backs render as Markdown (including tables) via `react-markdown`; raw HTML in replies is not rendered. Errors are displayed without dropping earlier conversation; source selection is captured when the request is sent.
 
 ### Before enabling real service behavior
 
-- Replace the adapter, load existing notebook sources/messages, and implement processing status updates.
-- Replace the preview labels and local-only copy in `NotebookSidebar.tsx`, `NotebookChat.tsx`, `NotesPanel.tsx` and `FlashcardsView.tsx` with actual service state.
-- Move persistence from localStorage to the backend: load notebooks with `listNotebooks()`, then each notebook's sources, chats, notes and flashcards (with review schedule). Per-notebook state and actions live in `src/hooks/useNotebook.ts`, the single place to swap out.
+- Replace the adapter and set its `preview` flag to `false`. That hides the preview labels, loads notebooks with `listNotebooks()` (creating a first one if the list is empty) and sources with `listSources()`, each with loading and retry states, and turns on source status polling.
+- Chats, notes and flashcards (with review schedule) still live in localStorage; the contract has no endpoints for them yet. Per-notebook state and actions live in `src/hooks/useNotebook.ts`, the single place to swap out.
 - Add request cancellation/streaming if supported by your backend.
 
 ## Practice MCQ mode
@@ -105,7 +105,7 @@ Practice mode uses the MCQ adapter in [`src/api/client.ts`](src/api/client.ts) (
 Cards live in `src/flashcards.ts` (type, Leitner-style scheduling) and are rendered by [`src/components/FlashcardsView.tsx`](src/components/FlashcardsView.tsx).
 
 - **Generate:** tick sources in the deck panel and press _Generate flashcards_, which calls `notebookApi.generateFlashcards`. The preview adapter returns labelled placeholder cards.
-- **Review:** due cards are shown one at a time. Flip with a click or <kbd>Space</kbd>, then grade with _Again_ (<kbd>1</kbd>, back to box 0 and repeated this session) or _Got it_ (<kbd>2</kbd>, next review in 1, 3, 7, 14, then 30 days). _Study all_ goes through every card without rescheduling.
+- **Review:** due cards are shown one at a time as a 3D flip card, with the rest of the session stacked behind it. Click or press <kbd>Space</kbd> to flip between question and answer, then grade with _Again_ (<kbd>1</kbd>, back to box 0 and repeated this session) or _Got it_ (<kbd>2</kbd>, next review in 1, 3, 7, 14, then 30 days); the card slides out left or right and the next one deals in. Grade buttons stay disabled until the answer is shown. _Study all_ goes through every card without rescheduling. Animations are skipped when the system asks for reduced motion.
 - **Ask about a card:** after flipping, the card chat (`FlashcardChat.tsx`) sends the card as `context` to `notebookApi.chat`, grounded in the card's source when it has one.
 
 ## Project structure

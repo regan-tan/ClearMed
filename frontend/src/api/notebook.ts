@@ -56,6 +56,8 @@ export interface NotebookSummary {
   createdAt: number
 }
 export interface NotebookApi {
+  /** True for the UI-only adapter: the app labels answers and files as a preview. Set false in the HTTP adapter. */
+  readonly preview: boolean
   listNotebooks(): Promise<NotebookSummary[]>
   createNotebook(title: string): Promise<NotebookSummary>
   renameNotebook(notebookId: string, title: string): Promise<void>
@@ -73,6 +75,7 @@ export interface NotebookApi {
 // Replace this object with your HTTP adapter; keep components independent of endpoint details.
 // Notebooks themselves are kept in localStorage by the app (see src/notebooks.ts) until the backend owns them.
 export const notebookApi: NotebookApi = {
+  preview: true,
   async listNotebooks() {
     return []
   },

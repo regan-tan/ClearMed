@@ -1,10 +1,12 @@
-import { FileText, Layers, Loader2, RotateCcw, Search, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import clsx from 'clsx'
+import { FileText, Layers, Loader2, RotateCcw, RotateCw, Search, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { notebookApi, type NotebookSource, type RetrievalSettings } from '../api/notebook'
 import { createCard, describeDue, nextInterval, reviewCard, type Flashcard } from '../flashcards'
-import { ACCEPTED_SOURCE_TYPES } from '../sources'
+import { ACCEPTED_SOURCE_TYPES, isUsableSource } from '../sources'
 import { plural } from '../utils'
 import { FlashcardChat } from './FlashcardChat'
+import { Markdown } from './Markdown'
 
 interface Props {
   notebookId: string
@@ -18,6 +20,8 @@ interface Props {
   uploading: boolean
   retrieval: RetrievalSettings
 }
+
+const CARD_EXIT_MS = 260
 
 function sessionSummary(reviewed: number, dueCount: number, nextDue: number | null) {
   const done = reviewed ? `You reviewed ${plural(reviewed, 'card')}. ` : ''
@@ -54,6 +58,8 @@ export function FlashcardsView({
   const [queue, setQueue] = useState<string[]>(() => dueIds(cards))
   const [cram, setCram] = useState(false)
   const [flipped, setFlipped] = useState(false)
+  // Direction the graded card slides out: left for "Again", right for "Got it".
+  const [leaving, setLeaving] = useState<'left' | 'right' | null>(null)
   const [reviewed, setReviewed] = useState(0)
   // Last deleted card, kept briefly so the delete can be undone.
   const [deleted, setDeleted] = useState<{ card: Flashcard; index: number; wasCurrent: boolean } | null>(null)
@@ -65,7 +71,7 @@ export function FlashcardsView({
     `${card.front} ${card.back} ${card.label ?? ''}`.toLowerCase().includes(search.toLowerCase()),
   )
   const nextDue = cards.length ? Math.min(...cards.map(card => card.due)) : null
-  const chosen = selected.filter(id => sources.some(source => source.id === id))
+  const chosen = selected.filter(id => sources.some(source => source.id === id && isUsableSource(source)))
 
   async function generate() {
     if (generating || !chosen.length) return
@@ -115,12 +121,19 @@ export function FlashcardsView({
     setFlipped(false)
   }
   function grade(remembered: boolean) {
-    if (!current) return
-    if (!cram) setCards(all => all.map(card => (card.id === current.id ? reviewCard(card, remembered) : card)))
-    // Forgotten cards go to the back of this sitting so they come round again.
-    setQueue(remembered ? live.slice(1) : [...live.slice(1), current.id])
-    setReviewed(n => n + 1)
-    setFlipped(false)
+    if (!current || leaving) return
+    const card = current
+    const finish = () => {
+      if (!cram) setCards(all => all.map(item => (item.id === card.id ? reviewCard(item, remembered) : item)))
+      // Forgotten cards go to the back of this sitting so they come round again.
+      setQueue(remembered ? live.slice(1) : [...live.slice(1), card.id])
+      setReviewed(n => n + 1)
+      setFlipped(false)
+      setLeaving(null)
+    }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return finish()
+    setLeaving(remembered ? 'right' : 'left')
+    setTimeout(finish, CARD_EXIT_MS)
   }
 
   useEffect(() => {
@@ -128,9 +141,9 @@ export function FlashcardsView({
       const target = e.target as HTMLElement
       if (!current || target.closest('input, textarea, select') || e.metaKey || e.ctrlKey) return
       // Space/Enter keep their native meaning on other buttons; the card button flips itself when clicked.
-      if (!flipped && (e.key === ' ' || e.key === 'Enter') && !target.closest('button')) {
+      if ((e.key === ' ' || e.key === 'Enter') && !target.closest('button')) {
         e.preventDefault()
-        setFlipped(true)
+        if (!leaving) setFlipped(value => !value)
       } else if (flipped && e.key === '1') grade(false)
       else if (flipped && e.key === '2') grade(true)
     }
@@ -190,7 +203,8 @@ export function FlashcardsView({
                         <label>
                           <input
                             type="checkbox"
-                            checked={selected.includes(source.id)}
+                            checked={isUsableSource(source) && selected.includes(source.id)}
+                            disabled={!isUsableSource(source)}
                             onChange={() => onToggleSource(source.id)}
                           />
                           <FileText size={14} />
@@ -304,38 +318,55 @@ export function FlashcardsView({
                   <span style={{ width: `${(reviewed / total) * 100}%` }} />
                 </div>
               </div>
-              <button
-                ref={cardButton}
-                className={`flashcard ${flipped ? 'flipped' : ''}`}
-                onClick={() => setFlipped(true)}
-                disabled={flipped}
-                aria-live="polite"
-              >
-                {current.label && <span className="flashcard-label">{current.label}</span>}
-                <p className="flashcard-front">{current.front}</p>
-                {flipped ? (
-                  <>
-                    <hr />
-                    <p className="flashcard-back">{current.back}</p>
-                  </>
-                ) : (
-                  <span className="flashcard-hint">
-                    Show answer <kbd>Space</kbd>
+              {/* Cards still to come show as a stack behind the current one. */}
+              <div className={`flashcard-deck stack-${Math.min(live.length - 1, 2)}`}>
+                {/* Remount per card and review so a new card starts face up instead of flipping back into view. */}
+                <button
+                  key={`${current.id}-${reviewed}`}
+                  ref={cardButton}
+                  className={clsx('flashcard', flipped && 'flipped', leaving && `leaving-${leaving}`)}
+                  onClick={() => !leaving && setFlipped(value => !value)}
+                  aria-live="polite"
+                >
+                  <span className="flashcard-inner">
+                    <span className="flashcard-face front" aria-hidden={flipped}>
+                      <span className="flashcard-top">
+                        <span className="flashcard-eyebrow">Question</span>
+                        {current.label && <span className="flashcard-label">{current.label}</span>}
+                      </span>
+                      <span className="flashcard-front">{current.front}</span>
+                      <span className="flashcard-hint">
+                        <RotateCw size={14} />
+                        Tap to reveal the answer <kbd>Space</kbd>
+                      </span>
+                    </span>
+                    <span className="flashcard-face back" aria-hidden={!flipped}>
+                      <span className="flashcard-top">
+                        <span className="flashcard-eyebrow">Answer</span>
+                        {current.label && <span className="flashcard-label">{current.label}</span>}
+                      </span>
+                      <span className="flashcard-question">{current.front}</span>
+                      <Markdown className="flashcard-back" links={false}>
+                        {current.back}
+                      </Markdown>
+                      <span className="flashcard-hint">
+                        <RotateCw size={14} />
+                        Tap to see the question
+                      </span>
+                    </span>
                   </span>
-                )}
-              </button>
-              {flipped && (
-                <div className="grade-buttons">
-                  <button onClick={() => grade(false)}>
-                    <RotateCcw size={15} />
-                    Again<kbd>1</kbd>
-                  </button>
-                  <button className="primary" onClick={() => grade(true)}>
-                    Got it{!cram && <small>· {nextInterval(current)}</small>}
-                    <kbd>2</kbd>
-                  </button>
-                </div>
-              )}
+                </button>
+              </div>
+              <div className="grade-buttons">
+                <button className="again" disabled={!flipped || !!leaving} onClick={() => grade(false)}>
+                  <RotateCcw size={15} />
+                  Again<kbd>1</kbd>
+                </button>
+                <button className="primary" disabled={!flipped || !!leaving} onClick={() => grade(true)}>
+                  Got it{!cram && <small>· {nextInterval(current)}</small>}
+                  <kbd>2</kbd>
+                </button>
+              </div>
               {/* key resets the conversation when the next card comes up */}
               {flipped && (
                 <FlashcardChat key={current.id} notebookId={notebookId} card={current} retrieval={retrieval} />

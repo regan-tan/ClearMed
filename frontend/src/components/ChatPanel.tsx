@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from '../api/client'
 import type { ChatTurn, EmbeddingModel, Evidence, Question } from '../api/types'
 import { EvidenceList } from './EvidenceList'
+import { Markdown } from './Markdown'
 
 interface Message extends ChatTurn {
   evidence?: Evidence[]
@@ -98,7 +99,7 @@ export function ChatPanel({ question, embeddingModel, topK, children }: Props) {
                         <AlertTriangle className="h-3.5 w-3.5" /> Insufficient evidence
                       </p>
                     )}
-                    {m.content}
+                    <Markdown>{m.content}</Markdown>
                   </div>
                   {m.evidence && <EvidenceList evidence={m.evidence} />}
                 </div>
