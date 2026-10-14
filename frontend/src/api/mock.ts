@@ -1,20 +1,12 @@
 // Mock backend used until the real FastAPI service exists.
 // Questions are hand-written samples in MedMCQA style, not real dataset rows.
 
-import type {
-  Evidence,
-  FollowUpRequest,
-  FollowUpResponse,
-  McqPrediction,
-  Question,
-  TutorApi,
-} from './types'
+import type { Evidence, FollowUpRequest, FollowUpResponse, McqPrediction, Question, TutorApi } from './types'
 
 const QUESTIONS: Question[] = [
   {
     id: 'q1',
-    question:
-      'Which nerve is most commonly injured in a fracture of the surgical neck of the humerus?',
+    question: 'Which nerve is most commonly injured in a fracture of the surgical neck of the humerus?',
     options: { A: 'Radial nerve', B: 'Axillary nerve', C: 'Ulnar nerve', D: 'Musculocutaneous nerve' },
     correct: 'B',
     subject: 'Anatomy',
@@ -133,7 +125,7 @@ const FALLBACK_THRESHOLD = 0.35
 export const FALLBACK_MESSAGE =
   "I couldn't find enough supporting evidence to answer that reliably. Try rephrasing your question, or check a standard textbook for this topic."
 
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 function retrieve(
   query: string,
@@ -143,7 +135,7 @@ function retrieve(
 ): Evidence[] {
   const tokens = new Set(query.toLowerCase().match(/[a-z0-9-]+/g) ?? [])
   return CORPUS.map(({ keywords, ...p }) => {
-    const hits = keywords.filter((kw) => tokens.has(kw)).length
+    const hits = keywords.filter(kw => tokens.has(kw)).length
     const subjectBonus = p.subject === subject ? 0.05 : 0
     const score = Math.min(0.99, (0.1 + hits * 0.22 + subjectBonus) * MODEL_SCALE[model])
     return { ...p, score: Number(score.toFixed(3)) }
@@ -165,7 +157,7 @@ export const mockApi: TutorApi = {
 
   async followUp(req): Promise<FollowUpResponse> {
     await delay(900)
-    const question = QUESTIONS.find((q) => q.id === req.question_id)
+    const question = QUESTIONS.find(q => q.id === req.question_id)
     const evidence = retrieve(req.message, question?.subject, req.embedding_model, req.top_k)
     const best = evidence[0]?.score ?? 0
 

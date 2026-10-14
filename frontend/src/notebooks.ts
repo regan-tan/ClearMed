@@ -1,12 +1,16 @@
 import { hasStored, moveStored, readStored, removeStored, writeStored } from './storage'
 
-export interface NotebookMeta { id: string; title: string; createdAt: number }
+export interface NotebookMeta {
+  id: string
+  title: string
+  createdAt: number
+}
 
 export const DEFAULT_TITLE = 'Untitled notebook'
 
 // Data owned by each notebook. Practice progress, search settings and theme are shared.
 const NOTEBOOK_DATA = ['sources', 'selected-sources', 'chats', 'active-chat', 'notes', 'flashcards'] as const
-type NotebookData = typeof NOTEBOOK_DATA[number]
+type NotebookData = (typeof NOTEBOOK_DATA)[number]
 
 export function notebookKey(id: string, name: NotebookData) {
   return `notebook:${id}:${name}`

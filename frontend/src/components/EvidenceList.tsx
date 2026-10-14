@@ -9,7 +9,7 @@ export function EvidenceList({ evidence }: { evidence: Evidence[] }) {
   return (
     <div className="mt-2">
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         className="flex items-center gap-1 text-xs font-medium text-fg-muted hover:text-fg"
       >

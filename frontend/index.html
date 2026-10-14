@@ -10,8 +10,7 @@
     <script>
       // Apply a saved dark theme before first paint to avoid a light flash. Light is the default.
       try {
-        if (localStorage.getItem('clearmed-theme') === 'dark')
-          document.documentElement.classList.add('dark')
+        if (localStorage.getItem('clearmed-theme') === 'dark') document.documentElement.classList.add('dark')
       } catch {}
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />

@@ -28,7 +28,11 @@ export function writeStored(key: string, value: unknown) {
 }
 
 export function removeStored(key: string) {
-  try { localStorage.removeItem(PREFIX + key) } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(PREFIX + key)
+  } catch {
+    /* ignore */
+  }
 }
 
 export function moveStored(from: string, to: string) {
@@ -37,11 +41,17 @@ export function moveStored(from: string, to: string) {
     if (raw === null) return
     localStorage.setItem(PREFIX + to, raw)
     localStorage.removeItem(PREFIX + from)
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function hasStored(key: string) {
-  try { return localStorage.getItem(PREFIX + key) !== null } catch { return false }
+  try {
+    return localStorage.getItem(PREFIX + key) !== null
+  } catch {
+    return false
+  }
 }
 
 // useState backed by localStorage. This keeps the preview's data across refreshes in this browser;
@@ -56,17 +66,24 @@ export function usePersistentState<T>(key: string, initial: T) {
     setState(current)
   }
 
-  useEffect(() => { writeStored(current.key, current.value) }, [current.key, current.value])
+  useEffect(() => {
+    writeStored(current.key, current.value)
+  }, [current.key, current.value])
 
   const activeKey = useRef(key)
-  useLayoutEffect(() => { activeKey.current = key }, [key])
+  useLayoutEffect(() => {
+    activeKey.current = key
+  }, [key])
   const fallback = useRef(initial)
 
-  const setValue = useCallback((action: SetStateAction<T>) => {
-    const apply = (previous: T) => typeof action === 'function' ? (action as (value: T) => T)(previous) : action
-    if (activeKey.current === key) setState(s => s.key === key ? { key, value: apply(s.value) } : s)
-    else writeStored(key, apply(readStored(key, fallback.current)))
-  }, [key])
+  const setValue = useCallback(
+    (action: SetStateAction<T>) => {
+      const apply = (previous: T) => (typeof action === 'function' ? (action as (value: T) => T)(previous) : action)
+      if (activeKey.current === key) setState(s => (s.key === key ? { key, value: apply(s.value) } : s))
+      else writeStored(key, apply(readStored(key, fallback.current)))
+    },
+    [key],
+  )
 
   return [current.value, setValue] as const
 }

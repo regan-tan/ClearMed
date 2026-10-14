@@ -35,7 +35,7 @@ export function ChatPanel({ question, embeddingModel, topK, children }: Props) {
     const message = text.trim()
     if (!message || loading) return
     const history: ChatTurn[] = messages.map(({ role, content }) => ({ role, content }))
-    setMessages((m) => [...m, { role: 'user', content: message }])
+    setMessages(m => [...m, { role: 'user', content: message }])
     setInput('')
     setLoading(true)
     try {
@@ -46,12 +46,12 @@ export function ChatPanel({ question, embeddingModel, topK, children }: Props) {
         embedding_model: embeddingModel,
         top_k: topK,
       })
-      setMessages((m) => [
+      setMessages(m => [
         ...m,
         { role: 'assistant', content: res.reply, evidence: res.evidence, fallback: res.fallback },
       ])
     } catch (e) {
-      setMessages((m) => [
+      setMessages(m => [
         ...m,
         { role: 'assistant', content: `Something went wrong (${e instanceof Error ? e.message : 'unknown error'}).` },
       ])
@@ -116,10 +116,13 @@ export function ChatPanel({ question, embeddingModel, topK, children }: Props) {
       </div>
 
       <div className="mx-auto w-full max-w-3xl px-5 pb-6 sm:px-10">
-        <div className="mb-3 border-t border-border pt-5"><h2 className="text-sm font-semibold">Talk through the reasoning</h2><p className="mt-1 text-xs text-fg-muted">Ask a follow-up and inspect the supporting passages.</p></div>
+        <div className="mb-3 border-t border-border pt-5">
+          <h2 className="text-sm font-semibold">Talk through the reasoning</h2>
+          <p className="mt-1 text-xs text-fg-muted">Ask a follow-up and inspect the supporting passages.</p>
+        </div>
         {messages.length === 0 && (
           <div className="mb-2.5 flex flex-wrap gap-2">
-            {SUGGESTIONS.map((s) => (
+            {SUGGESTIONS.map(s => (
               <button
                 key={s}
                 onClick={() => send(s)}
@@ -131,7 +134,7 @@ export function ChatPanel({ question, embeddingModel, topK, children }: Props) {
           </div>
         )}
         <form
-          onSubmit={(e) => {
+          onSubmit={e => {
             e.preventDefault()
             send(input)
           }}
@@ -139,16 +142,12 @@ export function ChatPanel({ question, embeddingModel, topK, children }: Props) {
         >
           <input
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={e => setInput(e.target.value)}
             aria-label="Follow-up question"
             placeholder="What would you like to understand?"
             className="min-w-0 flex-1 bg-transparent py-1.5 text-sm outline-none placeholder:text-fg-subtle"
           />
-          <button
-            type="submit"
-            disabled={!input.trim() || loading}
-            aria-label="Send"
-          >
+          <button type="submit" disabled={!input.trim() || loading} aria-label="Send">
             <ArrowUp className="h-[18px] w-[18px]" />
           </button>
         </form>

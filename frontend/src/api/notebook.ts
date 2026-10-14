@@ -8,10 +8,28 @@ export interface NotebookSource {
   status: 'staged' | 'processing' | 'ready' | 'error'
   error?: string
 }
-export interface Citation { source_id: string; source_name: string; excerpt: string; page?: number }
-export interface NotebookMessage { id: string; role: 'user' | 'assistant'; content: string; citations?: Citation[] }
-export interface Conversation { id: string; title: string; messages: NotebookMessage[]; updatedAt: number }
-export interface Note { id: string; text: string }
+export interface Citation {
+  source_id: string
+  source_name: string
+  excerpt: string
+  page?: number
+}
+export interface NotebookMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  citations?: Citation[]
+}
+export interface Conversation {
+  id: string
+  title: string
+  messages: NotebookMessage[]
+  updatedAt: number
+}
+export interface Note {
+  id: string
+  text: string
+}
 export interface NotebookRequest {
   message: string
   /** Empty when the user hasn't selected any sources; the backend answers without user material. */
@@ -22,9 +40,21 @@ export interface NotebookRequest {
   /** Search settings chosen in the header; shared with MCQ follow-ups. */
   retrieval: RetrievalSettings
 }
-export interface RetrievalSettings { embedding_model: EmbeddingModel; top_k: number }
-export interface GeneratedFlashcard { front: string; back: string; source_id: string; source_name: string }
-export interface NotebookSummary { id: string; title: string; createdAt: number }
+export interface RetrievalSettings {
+  embedding_model: EmbeddingModel
+  top_k: number
+}
+export interface GeneratedFlashcard {
+  front: string
+  back: string
+  source_id: string
+  source_name: string
+}
+export interface NotebookSummary {
+  id: string
+  title: string
+  createdAt: number
+}
 export interface NotebookApi {
   listNotebooks(): Promise<NotebookSummary[]>
   createNotebook(title: string): Promise<NotebookSummary>
@@ -43,14 +73,20 @@ export interface NotebookApi {
 // Replace this object with your HTTP adapter; keep components independent of endpoint details.
 // Notebooks themselves are kept in localStorage by the app (see src/notebooks.ts) until the backend owns them.
 export const notebookApi: NotebookApi = {
-  async listNotebooks() { return [] },
-  async createNotebook(title) { return { id: crypto.randomUUID(), title, createdAt: Date.now() } },
+  async listNotebooks() {
+    return []
+  },
+  async createNotebook(title) {
+    return { id: crypto.randomUUID(), title, createdAt: Date.now() }
+  },
   async renameNotebook() {},
   async deleteNotebook() {},
   async uploadSource(_notebookId, file) {
     return { id: crypto.randomUUID(), name: file.name, size: file.size, status: 'staged' }
   },
-  async listSources() { return [] },
+  async listSources() {
+    return []
+  },
   async removeSource() {},
   async chat(_notebookId, { source_ids }) {
     return {
@@ -62,11 +98,13 @@ export const notebookApi: NotebookApi = {
   },
   // Placeholder cards, clearly labelled: the preview can't read file contents to write real ones.
   async generateFlashcards(_notebookId, { source_ids }) {
-    return source_ids.flatMap(source_id => [1, 2, 3].map(n => ({
-      source_id,
-      source_name: '',
-      front: `Preview card ${n}: a key concept from this source`,
-      back: 'Once the backend is connected, ClearMed will write a question and answer here from the content of this source.',
-    })))
+    return source_ids.flatMap(source_id =>
+      [1, 2, 3].map(n => ({
+        source_id,
+        source_name: '',
+        front: `Preview card ${n}: a key concept from this source`,
+        back: 'Once the backend is connected, ClearMed will write a question and answer here from the content of this source.',
+      })),
+    )
   },
 }

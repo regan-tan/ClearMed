@@ -12,8 +12,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const httpApi: TutorApi = {
   listQuestions: () => request('/questions'),
-  predict: (questionId) => request(`/questions/${questionId}/predict`, { method: 'POST' }),
-  followUp: (req) => request('/follow-up', { method: 'POST', body: JSON.stringify(req) }),
+  predict: questionId => request(`/questions/${questionId}/predict`, { method: 'POST' }),
+  followUp: req => request('/follow-up', { method: 'POST', body: JSON.stringify(req) }),
 }
 
 // Set VITE_USE_MOCK=false once the FastAPI backend is running.
