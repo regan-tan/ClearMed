@@ -20,6 +20,7 @@ npm run dev
 - File type/size checks (non-empty, up to 20 MB), source selection, and deletion with confirmation (optionally removing flashcards made from the source).
 - Central chat with multiline input; works with or without selected sources (Enter sends, Shift+Enter adds a line).
 - VS Code-style left sidebar with collapsible **Sources** and **Chats** sections and a draggable divider between them (arrow keys also resize; double-click resets). Collapsed state and split are remembered.
+- Resizable columns: drag the dividers between the sidebar, chat and notes panels (arrow keys also resize; double-click resets to 280px). Widths are remembered, and the chat column always keeps at least 360px.
 - Chat history: conversations are saved with a title; reopen, delete or start a new chat from the Chats section (or the history button on phones).
 - Save responses to notes or write your own notes.
 - Flashcards generated from selected sources, reviewed with a simple spaced-repetition schedule (Again / Got it). Ask follow-up questions about the card on screen. Chat answers and practice MCQs can also be added as cards in one click; cards can be deleted with undo.
@@ -104,7 +105,7 @@ Practice mode uses the MCQ adapter in [`src/api/client.ts`](src/api/client.ts) (
 Cards live in `src/flashcards.ts` (type, Leitner-style scheduling) and are rendered by [`src/components/FlashcardsView.tsx`](src/components/FlashcardsView.tsx).
 
 - **Generate:** tick sources in the deck panel and press _Generate flashcards_, which calls `notebookApi.generateFlashcards`. The preview adapter returns labelled placeholder cards.
-- **Review:** due cards are shown one at a time. Flip with a click or <kbd>Space</kbd>, then grade with _Again_ (<kbd>1</kbd>, back to box 0 and repeated this session) or _Got it_ (<kbd>2</kbd>, next review in 1, 3, 7, 14, then 30 days). _Study all_ goes through every card without rescheduling.
+- **Review:** due cards are shown one at a time as a 3D flip card, with the rest of the session stacked behind it. Click or press <kbd>Space</kbd> to flip between question and answer, then grade with _Again_ (<kbd>1</kbd>, back to box 0 and repeated this session) or _Got it_ (<kbd>2</kbd>, next review in 1, 3, 7, 14, then 30 days); the card slides out left or right and the next one deals in. Grade buttons stay disabled until the answer is shown. _Study all_ goes through every card without rescheduling. Animations are skipped when the system asks for reduced motion.
 - **Ask about a card:** after flipping, the card chat (`FlashcardChat.tsx`) sends the card as `context` to `notebookApi.chat`, grounded in the card's source when it has one.
 
 ## Project structure

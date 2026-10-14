@@ -1656,11 +1656,13 @@
   .flashcard-stage {
     display: flex;
   }
+  /* Pinned to the top so revealing the answer and the card chat only add content below, never shift the card. */
   .flashcard-session {
-    margin: auto;
+    margin: 0 auto;
+    align-self: flex-start;
     width: 100%;
     max-width: 640px;
-    padding: 32px 24px;
+    padding: 48px 24px 32px;
     display: grid;
     gap: 20px;
   }
@@ -1698,29 +1700,106 @@
     background: var(--primary);
     transition: width 0.3s;
   }
+  /* 3D flip card: both faces share one grid cell so the card is as tall as its longer side. */
+  .flashcard-deck {
+    position: relative;
+    isolation: isolate;
+  }
+  .flashcard-deck::before,
+  .flashcard-deck::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .flashcard-deck::before {
+    z-index: -1;
+    transform: translateY(10px) scale(0.96);
+  }
+  .flashcard-deck::after {
+    z-index: -2;
+    transform: translateY(20px) scale(0.92);
+  }
+  .flashcard-deck.stack-1::before,
+  .flashcard-deck.stack-2::before,
+  .flashcard-deck.stack-2::after {
+    opacity: 1;
+  }
   .flashcard {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border-radius: 16px;
+    perspective: 1600px;
+    animation: flashcard-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .flashcard:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+  }
+  .flashcard.leaving-left {
+    animation: flashcard-out-left 0.26s ease-in forwards;
+  }
+  .flashcard.leaving-right {
+    animation: flashcard-out-right 0.26s ease-in forwards;
+  }
+  .flashcard-inner {
+    display: grid;
+    transform-style: preserve-3d;
+    transition: transform 0.55s cubic-bezier(0.3, 0.7, 0.2, 1);
+  }
+  .flashcard:not(.flipped):hover .flashcard-inner {
+    transform: translateY(-3px);
+  }
+  .flashcard.flipped .flashcard-inner {
+    transform: rotateY(180deg);
+  }
+  .flashcard-face {
+    grid-area: 1 / 1;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
     gap: 16px;
-    min-height: 280px;
-    padding: 28px 32px;
-    text-align: left;
+    min-height: 300px;
+    padding: 24px 32px 22px;
     border: 1px solid var(--border);
     border-radius: 16px;
     background: var(--surface);
     box-shadow:
       0 1px 2px #0000000a,
-      0 8px 24px #0000000d;
+      0 10px 30px #00000012;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
     transition: border-color 0.15s;
   }
-  .flashcard:not(:disabled):hover {
+  .flashcard:hover .flashcard-face {
     border-color: var(--accent-ring);
   }
-  .flashcard:disabled {
-    opacity: 1;
+  .flashcard-face.back {
+    transform: rotateY(180deg);
+    border-top: 3px solid var(--accent);
+  }
+  .flashcard-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .flashcard-eyebrow {
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--fg-subtle);
   }
   .flashcard-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 11px;
     font-weight: 600;
     color: var(--accent);
@@ -1729,32 +1808,60 @@
     border-radius: 999px;
   }
   .flashcard-front {
-    font-size: clamp(18px, 1.7vw, 22px);
+    margin: auto 0;
+    padding: 12px 0;
+    text-align: center;
+    font-size: clamp(19px, 1.9vw, 24px);
     font-weight: 550;
     line-height: 1.45;
     letter-spacing: -0.3px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
-  .flashcard hr {
-    width: 100%;
-    border: 0;
-    border-top: 1px dashed var(--border);
+  .flashcard-question {
+    padding-bottom: 14px;
+    border-bottom: 1px dashed var(--border);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--fg-muted);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   .flashcard-back {
     font-size: 15px;
     line-height: 1.7;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
   }
   .flashcard-hint {
     margin-top: auto;
+    align-self: center;
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
+    color: var(--fg-subtle);
+  }
+  .flashcard-face.front .flashcard-hint {
     color: var(--accent);
+  }
+  @keyframes flashcard-in {
+    from {
+      opacity: 0;
+      transform: translateY(14px) scale(0.97);
+    }
+  }
+  @keyframes flashcard-out-left {
+    to {
+      opacity: 0;
+      transform: translateX(-70px) rotate(-5deg);
+    }
+  }
+  @keyframes flashcard-out-right {
+    to {
+      opacity: 0;
+      transform: translateX(70px) rotate(5deg);
+    }
   }
   kbd {
     font:
@@ -1785,15 +1892,28 @@
     font-weight: 550;
     transition: background 0.15s;
   }
-  .grade-buttons button:hover {
+  .grade-buttons button:hover:not(:disabled) {
     background: var(--subtle);
+  }
+  .grade-buttons button:disabled {
+    opacity: 0.45;
+  }
+  .grade-buttons button.again:hover:not(:disabled) {
+    border-color: #fda4af;
+    color: #be123c;
+    background: #fff1f2;
+  }
+  .dark .grade-buttons button.again:hover:not(:disabled) {
+    border-color: #9f1239;
+    color: #fda4af;
+    background: #4c051914;
   }
   .grade-buttons button.primary {
     background: var(--primary);
     border-color: var(--primary);
     color: var(--primary-fg);
   }
-  .grade-buttons button.primary:hover {
+  .grade-buttons button.primary:hover:not(:disabled) {
     background: var(--primary-hover);
   }
   .grade-buttons small {
@@ -2014,9 +2134,9 @@
     padding: 5px 8px;
     min-width: 0;
   }
-  .flashcard {
-    padding: 22px;
-    min-height: 220px;
+  .flashcard-face {
+    padding: 20px 20px 18px;
+    min-height: 240px;
   }
   .flashcard-session {
     padding: 20px 14px;
@@ -2088,6 +2208,13 @@
   .mode-switch button {
     font-size: 11.5px;
     padding: 5px 7px;
+  }
+}
+/* Keyboard shortcut hints mean nothing on touch screens. */
+@media (hover: none) {
+  .flashcard-hint kbd,
+  .grade-buttons kbd {
+    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
