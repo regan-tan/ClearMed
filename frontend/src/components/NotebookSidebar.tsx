@@ -6,6 +6,7 @@ import {
   type Dispatch,
   type KeyboardEvent,
   type PointerEvent,
+  type RefObject,
   type SetStateAction,
 } from 'react'
 import type { Conversation, NotebookSource } from '../api/notebook'
@@ -36,6 +37,8 @@ interface Props {
   onDeleteChat: (id: string) => void
   layout: SidebarLayout
   onLayoutChange: Dispatch<SetStateAction<SidebarLayout>>
+  /** The sources file picker; owned by the parent so the chat's "Add your sources" can open it too. */
+  fileInput: RefObject<HTMLInputElement | null>
 }
 
 const clampSplit = (value: number) => Math.min(0.8, Math.max(0.2, value))
@@ -63,8 +66,8 @@ export function NotebookSidebar(props: Props) {
     onDeleteChat,
     layout,
     onLayoutChange,
+    fileInput,
   } = props
-  const input = useRef<HTMLInputElement>(null)
   const stack = useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = useState(false)
   const bothOpen = layout.sourcesOpen && layout.chatsOpen
@@ -100,7 +103,7 @@ export function NotebookSidebar(props: Props) {
   return (
     <aside className="notebook-panel sidebar" aria-label="Sources and chats">
       <input
-        ref={input}
+        ref={fileInput}
         type="file"
         multiple
         accept={ACCEPTED_SOURCE_TYPES}
@@ -122,7 +125,7 @@ export function NotebookSidebar(props: Props) {
               <button
                 className="icon-button"
                 disabled={busy}
-                onClick={() => input.current?.click()}
+                onClick={() => fileInput.current?.click()}
                 aria-label="Add sources"
                 title={`Add sources (${SOURCE_TYPES_LABEL})`}
               >
@@ -196,7 +199,7 @@ export function NotebookSidebar(props: Props) {
                 </div>
                 <h3>Your material, all together.</h3>
                 <p>Drop lecture notes, textbook chapters or revision guides here. {SOURCE_TYPES_LABEL}.</p>
-                <button onClick={() => input.current?.click()} className="text-link" disabled={busy}>
+                <button onClick={() => fileInput.current?.click()} className="text-link" disabled={busy}>
                   Choose your first source
                 </button>
               </div>

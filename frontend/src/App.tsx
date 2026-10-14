@@ -28,6 +28,7 @@ export default function App() {
   })
   const [columns, setColumns] = usePersistentState('column-widths', DEFAULT_COLUMNS)
   const layoutRef = useRef<HTMLElement>(null)
+  const sourceInput = useRef<HTMLInputElement>(null)
 
   // Fallback only matters if storage is unavailable; ensureNotebooks() normally seeds the list at startup.
   const [fallbackNotebook] = useState(createNotebookMeta)
@@ -188,6 +189,7 @@ export default function App() {
                 onDeleteChat={nb.deleteChat}
                 layout={sidebarLayout}
                 onLayoutChange={setSidebarLayout}
+                fileInput={sourceInput}
               />
             </div>
             <ColumnResizer
@@ -217,7 +219,7 @@ export default function App() {
               onDeleteChat={nb.deleteChat}
               onAdd={() => {
                 setMobilePanel('sources')
-                document.querySelector<HTMLInputElement>('input[type="file"]')?.click()
+                sourceInput.current?.click()
               }}
               savedIds={nb.notes.map(note => note.id)}
               flashcardIds={nb.cardOrigins.flatMap(origin => (origin.startsWith('chat:') ? [origin.slice(5)] : []))}

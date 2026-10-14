@@ -8,13 +8,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ClearMed Study</title>
     <script>
-      // Apply a saved dark theme before first paint to avoid a light flash. Light is the default.
+      // Apply the theme before first paint to avoid a flash. Without a saved choice, follow the system setting.
       try {
-        if (localStorage.getItem('clearmed-theme') === 'dark') document.documentElement.classList.add('dark')
+        const saved = localStorage.getItem('clearmed-theme')
+        if (saved === 'dark' || (!saved && matchMedia('(prefers-color-scheme: dark)').matches))
+          document.documentElement.classList.add('dark')
       } catch {}
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>

@@ -14,7 +14,7 @@ npm run dev
 ## Current preview
 
 - Multiple notebooks: each has its own sources, chats, notes and flashcards. Switch, create, rename (edit the title in place) and delete from the menu next to the title. Practice MCQ progress, search settings and theme are shared.
-- Light/dark themes (light by default).
+- Light/dark themes (follows the system setting until you pick one).
 - Notebook, Practice MCQ and Flashcards modes.
 - Multiple-file picker and drag/drop for PDF, DOCX, TXT and Markdown.
 - File type/size checks (non-empty, up to 20 MB), source selection, and deletion with confirmation (optionally removing flashcards made from the source).
