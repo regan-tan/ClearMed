@@ -1,6 +1,6 @@
-import { FileText, NotebookPen, X } from 'lucide-react'
-import { useCallback, useRef, useState, type CSSProperties } from 'react'
-import { notebookApi, type Citation } from './api/notebook'
+import { FileText, Loader2, NotebookPen, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { notebookApi, type Citation, type NotebookSummary } from './api/notebook'
 import type { EmbeddingModel } from './api/types'
 import { AppHeader, type Mode } from './components/AppHeader'
 import { ColumnResizer } from './components/ColumnResizer'
@@ -36,6 +36,41 @@ export default function App() {
   const notebooks = storedNotebooks.length ? storedNotebooks : [fallbackNotebook]
   const [activeNotebookId, setActiveNotebookId] = usePersistentState('active-notebook', '')
   const notebook = notebooks.find(item => item.id === activeNotebookId) ?? notebooks[0]
+
+  // With a real backend the server owns the notebook list; the preview keeps it in this browser.
+  const [notebooksAttempt, setNotebooksAttempt] = useState(0)
+  const [notebooksResult, setNotebooksResult] = useState({ attempt: -1, failed: false })
+  const notebooksState = notebookApi.preview
+    ? 'ready'
+    : notebooksResult.attempt !== notebooksAttempt
+      ? 'loading'
+      : notebooksResult.failed
+        ? 'error'
+        : 'ready'
+  // Shared across StrictMode's double effect run so an empty account gets exactly one first notebook.
+  const firstNotebook = useRef<Promise<NotebookSummary> | null>(null)
+  useEffect(() => {
+    if (notebookApi.preview) return
+    let cancelled = false
+    notebookApi
+      .listNotebooks()
+      .then(async list => {
+        if (list.length) return list
+        firstNotebook.current ??= notebookApi.createNotebook(DEFAULT_TITLE)
+        return [await firstNotebook.current]
+      })
+      .then(list => {
+        if (cancelled) return
+        setNotebooks(list.map(({ id, title, createdAt }) => ({ id, title, createdAt })))
+        setNotebooksResult({ attempt: notebooksAttempt, failed: false })
+      })
+      .catch(() => {
+        if (!cancelled) setNotebooksResult({ attempt: notebooksAttempt, failed: true })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [notebooksAttempt, setNotebooks])
 
   const retrieval = { embedding_model: model, top_k: topK }
   const [error, setError] = useState<string | null>(null)
@@ -130,7 +165,25 @@ export default function App() {
         <PracticeView model={model} topK={topK} flashcardOrigins={nb.cardOrigins} onFlashcard={nb.addCard} />
       </div>
 
-      {mode === 'flashcards' && (
+      {mode !== 'practice' && notebooksState !== 'ready' && (
+        <main className="app-status" role={notebooksState === 'error' ? 'alert' : 'status'}>
+          {notebooksState === 'loading' ? (
+            <>
+              <Loader2 size={18} className="animate-spin" />
+              Loading your notebooks…
+            </>
+          ) : (
+            <>
+              Couldn’t load your notebooks.
+              <button className="text-link" onClick={() => setNotebooksAttempt(n => n + 1)}>
+                Try again
+              </button>
+            </>
+          )}
+        </main>
+      )}
+
+      {mode === 'flashcards' && notebooksState === 'ready' && (
         <div className="mode-view">
           <FlashcardsView
             key={notebook.id}
@@ -148,7 +201,7 @@ export default function App() {
         </div>
       )}
 
-      {mode === 'notebook' && (
+      {mode === 'notebook' && notebooksState === 'ready' && (
         <>
           <div className="mobile-panel-tabs">
             <button
@@ -175,7 +228,7 @@ export default function App() {
             <div className={`sources-slot ${mobilePanel === 'sources' ? 'mobile-visible' : ''}`}>
               <NotebookSidebar
                 sources={nb.sources}
-                selected={nb.selected}
+                selected={nb.readySelected}
                 busy={nb.uploading}
                 onAdd={nb.addSources}
                 onToggle={nb.toggleSource}
@@ -190,6 +243,9 @@ export default function App() {
                 layout={sidebarLayout}
                 onLayoutChange={setSidebarLayout}
                 fileInput={sourceInput}
+                loading={nb.sourcesLoading}
+                loadFailed={nb.sourcesFailed}
+                onRetryLoad={nb.retrySources}
               />
             </div>
             <ColumnResizer
@@ -204,7 +260,7 @@ export default function App() {
             <NotebookChat
               chats={nb.chats}
               activeId={nb.activeChatId}
-              sourceCount={nb.selected.length}
+              sourceCount={nb.readySelected.length}
               busy={nb.sending}
               error={nb.chatError}
               onSend={nb.send}

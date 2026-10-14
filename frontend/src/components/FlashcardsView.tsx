@@ -2,9 +2,10 @@ import { FileText, Layers, Loader2, RotateCcw, Search, Sparkles, Trash2, Upload,
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { notebookApi, type NotebookSource, type RetrievalSettings } from '../api/notebook'
 import { createCard, describeDue, nextInterval, reviewCard, type Flashcard } from '../flashcards'
-import { ACCEPTED_SOURCE_TYPES } from '../sources'
+import { ACCEPTED_SOURCE_TYPES, isUsableSource } from '../sources'
 import { plural } from '../utils'
 import { FlashcardChat } from './FlashcardChat'
+import { Markdown } from './Markdown'
 
 interface Props {
   notebookId: string
@@ -65,7 +66,7 @@ export function FlashcardsView({
     `${card.front} ${card.back} ${card.label ?? ''}`.toLowerCase().includes(search.toLowerCase()),
   )
   const nextDue = cards.length ? Math.min(...cards.map(card => card.due)) : null
-  const chosen = selected.filter(id => sources.some(source => source.id === id))
+  const chosen = selected.filter(id => sources.some(source => source.id === id && isUsableSource(source)))
 
   async function generate() {
     if (generating || !chosen.length) return
@@ -190,7 +191,8 @@ export function FlashcardsView({
                         <label>
                           <input
                             type="checkbox"
-                            checked={selected.includes(source.id)}
+                            checked={isUsableSource(source) && selected.includes(source.id)}
+                            disabled={!isUsableSource(source)}
                             onChange={() => onToggleSource(source.id)}
                           />
                           <FileText size={14} />
@@ -316,7 +318,9 @@ export function FlashcardsView({
                 {flipped ? (
                   <>
                     <hr />
-                    <p className="flashcard-back">{current.back}</p>
+                    <Markdown className="flashcard-back" links={false}>
+                      {current.back}
+                    </Markdown>
                   </>
                 ) : (
                   <span className="flashcard-hint">

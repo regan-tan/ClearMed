@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   notebookApi,
   type Conversation,
@@ -9,8 +9,10 @@ import {
 } from '../api/notebook'
 import { createCard, type Flashcard, type FlashcardDraft } from '../flashcards'
 import { notebookKey } from '../notebooks'
-import { sourceFileProblem } from '../sources'
+import { isUsableSource, sourceFileProblem } from '../sources'
 import { usePersistentState } from '../storage'
+
+const SOURCE_POLL_MS = 3000
 
 function chatTitle(message: string) {
   const line = message.split('\n')[0].trim()
@@ -43,6 +45,59 @@ export function useNotebook(notebookId: string, retrieval: RetrievalSettings, on
   }
 
   const activeChat = chats.find(chat => chat.id === activeChatId)
+  // Selection may include sources still processing or failed; only usable ones are sent with requests.
+  const usableIds = sources.filter(isUsableSource).map(source => source.id)
+  const readySelected = selected.filter(id => usableIds.includes(id))
+
+  // With a real backend the server owns the source list: load it whenever a notebook opens.
+  // The preview adapter has nothing to load, so locally staged sources are kept as they are.
+  // Loading is derived: it lasts until the request for the current notebook and attempt has settled.
+  const [sourcesAttempt, setSourcesAttempt] = useState(0)
+  const sourcesRequest = `${notebookId}:${sourcesAttempt}`
+  const [sourcesResult, setSourcesResult] = useState({ request: '', failed: false })
+  const sourcesSettled = notebookApi.preview || sourcesResult.request === sourcesRequest
+  useEffect(() => {
+    if (notebookApi.preview) return
+    let cancelled = false
+    notebookApi
+      .listSources(notebookId)
+      .then(list => {
+        if (cancelled) return
+        setSources(list)
+        setSelected(current => current.filter(id => list.some(source => source.id === id)))
+        setSourcesResult({ request: sourcesRequest, failed: false })
+      })
+      .catch(() => {
+        if (!cancelled) setSourcesResult({ request: sourcesRequest, failed: true })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [notebookId, sourcesRequest, setSources, setSelected])
+
+  // While any source is processing, poll for status changes and select sources as they become ready.
+  const sourcesRef = useRef(sources)
+  useLayoutEffect(() => {
+    sourcesRef.current = sources
+  })
+  const processing = sources.some(source => source.status === 'processing')
+  useEffect(() => {
+    if (!processing) return
+    const timer = setInterval(async () => {
+      try {
+        const latest = await notebookApi.listSources(notebookId)
+        const nowReady = sourcesRef.current
+          .filter(source => source.status === 'processing')
+          .filter(source => latest.some(item => item.id === source.id && item.status === 'ready'))
+          .map(source => source.id)
+        setSources(current => current.map(source => latest.find(item => item.id === source.id) ?? source))
+        if (nowReady.length) setSelected(current => [...current, ...nowReady.filter(id => !current.includes(id))])
+      } catch {
+        // keep polling; a transient failure shouldn't surface while files are still processing
+      }
+    }, SOURCE_POLL_MS)
+    return () => clearInterval(timer)
+  }, [processing, notebookId, setSources, setSelected])
   const cardOrigins = cards.flatMap(card => (card.origin ? [card.origin] : []))
 
   async function addSources(files: File[]) {
@@ -60,7 +115,8 @@ export function useNotebook(notebookId: string, retrieval: RetrievalSettings, on
         try {
           const source = await notebookApi.uploadSource(notebookId, file)
           setSources(current => [...current, source])
-          setSelected(current => [...current, source.id])
+          if (isUsableSource(source)) setSelected(current => [...current, source.id])
+          else if (source.status === 'error') failures.push(`${file.name}: ${source.error ?? 'couldn’t be processed.'}`)
         } catch {
           failures.push(`${file.name}: couldn't add this source. Please try again.`)
         }
@@ -93,7 +149,7 @@ export function useNotebook(notebookId: string, retrieval: RetrievalSettings, on
   }
 
   function toggleAllSources() {
-    setSelected(selected.length === sources.length ? [] : sources.map(source => source.id))
+    setSelected(readySelected.length === usableIds.length ? [] : usableIds)
   }
 
   function updateChat(id: string, update: (messages: NotebookMessage[]) => NotebookMessage[]) {
@@ -122,7 +178,7 @@ export function useNotebook(notebookId: string, retrieval: RetrievalSettings, on
       setActiveChatId(chatId)
     }
     try {
-      const response = await notebookApi.chat(notebookId, { message, source_ids: [...selected], history, retrieval })
+      const response = await notebookApi.chat(notebookId, { message, source_ids: readySelected, history, retrieval })
       updateChat(chatId, messages => [...messages, { id: crypto.randomUUID(), role: 'assistant', ...response }])
     } catch {
       updateChat(chatId, messages => messages.filter(item => item.id !== user.id))
@@ -183,6 +239,11 @@ export function useNotebook(notebookId: string, retrieval: RetrievalSettings, on
   return {
     sources,
     selected,
+    readySelected,
+    usableIds,
+    sourcesLoading: !sourcesSettled,
+    sourcesFailed: sourcesSettled && sourcesResult.failed,
+    retrySources: () => setSourcesAttempt(n => n + 1),
     chats,
     activeChatId,
     notes,

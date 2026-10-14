@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import type { McqPrediction, OptionKey, Question } from '../api/types'
 import type { FlashcardDraft } from '../flashcards'
+import { Markdown } from './Markdown'
 
 const KEYS: OptionKey[] = ['A', 'B', 'C', 'D']
 
@@ -159,7 +160,7 @@ export function McqCard({ question, answer, onAnswer, inDeck, onFlashcard }: Pro
                     <span className="text-rose-600 dark:text-rose-400">(differs from the answer key)</span>
                   )}
                 </p>
-                <p className="mt-1.5 text-sm leading-relaxed text-fg">{prediction.explanation}</p>
+                <Markdown className="mt-1.5 text-sm leading-relaxed text-fg">{prediction.explanation}</Markdown>
               </>
             )}
           </div>

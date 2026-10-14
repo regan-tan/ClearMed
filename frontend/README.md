@@ -48,7 +48,7 @@ These are proposed contracts, not claims about existing backend routes. Add note
 
 ### Source lifecycle
 
-`status` supports `staged`, `processing`, `ready`, and `error`; `error` optionally contains a useful message. The preview selects staged sources to demonstrate the conversation flow. With real ingestion, call `listSources()` on notebook load, poll or subscribe while sources are processing, and only send ready source IDs. The current app deliberately does not poll a backend that does not exist.
+`status` supports `staged`, `processing`, `ready`, and `error`; `error` optionally contains a useful message. Only `ready` sources (and `staged` ones in the preview) can be ticked or sent with a request; processing sources show a spinner and failed ones show their error with a prompt to remove and re-upload. With a real adapter, `useNotebook` loads the source list with `listSources()` whenever a notebook opens (with loading and retry states), polls it every 3 seconds while any source is `processing`, and ticks sources as they become ready.
 
 ### Chat contract
 
@@ -77,13 +77,12 @@ Return:
 }
 ```
 
-Citation buttons open the passage in the right panel. Replies render as plain text (including newlines), not unsanitized HTML. Errors are displayed without dropping earlier conversation; source selection is captured when the request is sent.
+Citation buttons open the passage in the right panel. Assistant replies, MCQ explanations, notes and flashcard backs render as Markdown (including tables) via `react-markdown`; raw HTML in replies is not rendered. Errors are displayed without dropping earlier conversation; source selection is captured when the request is sent.
 
 ### Before enabling real service behavior
 
-- Replace the adapter, load existing notebook sources/messages, and implement processing status updates.
-- Replace the preview labels and local-only copy in `NotebookSidebar.tsx`, `NotebookChat.tsx`, `NotesPanel.tsx` and `FlashcardsView.tsx` with actual service state.
-- Move persistence from localStorage to the backend: load notebooks with `listNotebooks()`, then each notebook's sources, chats, notes and flashcards (with review schedule). Per-notebook state and actions live in `src/hooks/useNotebook.ts`, the single place to swap out.
+- Replace the adapter and set its `preview` flag to `false`. That hides the preview labels, loads notebooks with `listNotebooks()` (creating a first one if the list is empty) and sources with `listSources()`, each with loading and retry states, and turns on source status polling.
+- Chats, notes and flashcards (with review schedule) still live in localStorage; the contract has no endpoints for them yet. Per-notebook state and actions live in `src/hooks/useNotebook.ts`, the single place to swap out.
 - Add request cancellation/streaming if supported by your backend.
 
 ## Practice MCQ mode

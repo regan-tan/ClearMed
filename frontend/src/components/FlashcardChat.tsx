@@ -2,6 +2,7 @@ import { ArrowUp, Loader2, MessageSquare } from 'lucide-react'
 import { useState } from 'react'
 import { notebookApi, type NotebookMessage, type RetrievalSettings } from '../api/notebook'
 import type { Flashcard } from '../flashcards'
+import { Markdown } from './Markdown'
 
 const SUGGESTIONS = ['Explain this in more depth', 'Give me a clinical example', 'How would this be tested?']
 
@@ -65,7 +66,7 @@ export function FlashcardChat({ notebookId, card, retrieval }: Props) {
       )}
       {messages.map(message => (
         <div key={message.id} className={`card-chat-message ${message.role}`}>
-          {message.content}
+          {message.role === 'assistant' ? <Markdown>{message.content}</Markdown> : message.content}
         </div>
       ))}
       {busy && (
