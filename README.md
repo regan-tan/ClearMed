@@ -20,6 +20,31 @@ This is an NLP research project, not simply a chatbot application.
 
 MedMCQA is the primary dataset. Official train, validation, and test splits are preserved where appropriate. Only training evidence may be indexed for retrieval; validation and test explanations must not be included in the retrieval corpus.
 
+### Reproducible training partitions
+
+The official MedMCQA training split is divided into 75% `part1_train` for
+Part I model training, 20% `retrieval_kb` for later retrieval development, and
+5% `internal_dev` for internal development. The official validation split
+remains reserved for final evaluation; the official test split remains
+untouched and is not used for scored answer accuracy.
+
+The splitter groups identical normalized question text before assigning rows,
+so duplicate questions cannot leak between the three generated subsets. Rows
+without explanations remain in their primary partition for MCQ QA; only
+QA-valid rows with a nonblank expert explanation are emitted as
+`retrieval_kb_evidence`.
+
+Generate artifacts (which are intentionally ignored by Git) with:
+
+```bash
+uv run python scripts/generate_splits.py --seed 42 --output-dir data/splits
+```
+
+Review `data/splits/manifest.json` after generation for exact sizes,
+fingerprints, duplicate statistics, and any reported overlaps with the
+official validation or test data. Choose a new output directory to regenerate;
+the script refuses to overwrite a non-empty one.
+
 ## Part I Models
 
 1. TF-IDF baseline
