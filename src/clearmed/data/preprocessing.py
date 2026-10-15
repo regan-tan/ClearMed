@@ -43,7 +43,12 @@ def get_answer_text(row: Mapping[str, Any]) -> str:
     return option_text.strip()
 
 
-def _get_question_and_options(row: Mapping[str, Any]) -> tuple[str, tuple[str, str, str, str]]:
+def get_question_and_options(row: Mapping[str, Any]) -> tuple[str, tuple[str, str, str, str]]:
+    """Return trimmed MCQ content without inspecting gold-answer fields.
+
+    This content-only validator is deliberately suitable for inference on new
+    questions, where ``cop`` and ``exp`` are not expected to be present.
+    """
     question = row.get("question")
     if not is_nonblank_text(question):
         raise ValueError("question must be nonblank text.")
@@ -51,6 +56,11 @@ def _get_question_and_options(row: Mapping[str, Any]) -> tuple[str, tuple[str, s
     if not all(is_nonblank_text(option) for option in options):
         raise ValueError("All four answer options must be nonblank text.")
     return question.strip(), tuple(option.strip() for option in options)  # type: ignore[return-value]
+
+
+def _get_question_and_options(row: Mapping[str, Any]) -> tuple[str, tuple[str, str, str, str]]:
+    """Backward-compatible private alias for older internal callers."""
+    return get_question_and_options(row)
 
 
 def format_question(row: Mapping[str, Any]) -> str:

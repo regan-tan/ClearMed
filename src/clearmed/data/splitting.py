@@ -193,6 +193,43 @@ def membership_fingerprint(dataset: Dataset) -> str:
     return sha256(payload).hexdigest()
 
 
+def assert_train_dev_disjoint(
+    train: Dataset, development: Dataset, *, train_name: str = "training", development_name: str = "development"
+) -> None:
+    """Reject row-ID or normalized-question leakage between two datasets.
+
+    This check is intentionally independent of the paths used to load the
+    datasets, so custom saved partitions receive the same protection as the
+    canonical Step 1 partitions.  Only string question values are compared;
+    malformed non-string values are handled later by QA validation.
+    """
+    train_ids = {_row_id(row) for row in train}
+    development_ids = {_row_id(row) for row in development}
+    shared_ids = sorted(train_ids & development_ids)
+
+    train_questions = set(_question_index(train))
+    development_questions = set(_question_index(development))
+    shared_questions = sorted(train_questions & development_questions)
+    if not shared_ids and not shared_questions:
+        return
+
+    details: list[str] = []
+    if shared_ids:
+        details.append(
+            f"{len(shared_ids)} overlapping row ID(s), for example {', '.join(shared_ids[:3])}"
+        )
+    if shared_questions:
+        previews = "; ".join(repr(question[:120]) for question in shared_questions[:3])
+        details.append(
+            f"{len(shared_questions)} overlapping normalized question(s), for example {previews}"
+        )
+    raise ValueError(
+        f"Dataset leakage detected between {train_name} and {development_name}: "
+        + "; ".join(details)
+        + ". Use disjoint saved partitions or regenerate them with scripts/generate_splits.py."
+    )
+
+
 def audit_dataset_overlap(
     partitions: Mapping[str, Dataset], comparison: Dataset
 ) -> dict[str, dict[str, Any]]:

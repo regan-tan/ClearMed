@@ -6,15 +6,10 @@ This is an NLP research project, not simply a chatbot application.
 
 ## Research Questions
 
-**Part I**
-
-- RQ1: Does LoRA fine-tuning of FLAN-T5 improve medical MCQ performance compared with classical and scratch-trained NLP baselines?
-- RQ2: Can retrieval-grounded generation improve follow-up reliability and reduce unsupported medical claims?
-
-**Part II**
-
-- RQ3: How does embedding-model choice affect retrieval effectiveness for medical follow-up questions?
-- RQ4: Does stronger retrieval lead to more accurate and better-grounded conversational responses?
+- RQ1: MCQ accuracy — TF-IDF vs Scratch Seq2Seq vs FLAN-T5 + LoRA.
+- RQ2: Explanation quality — Scratch Seq2Seq vs FLAN-T5 + LoRA.
+- RQ3: Retrieval effectiveness — MiniLM vs E5-base-v2 vs BioLORD-2023.
+- RQ4: Effect of retrieval quality on grounded conversational responses.
 
 ## Dataset
 
@@ -52,6 +47,47 @@ the script refuses to overwrite a non-empty one.
 3. FLAN-T5 + LoRA
 
 FLAN-T5-small is intended for local development and smoke testing. FLAN-T5-base is the intended main GPU experiment if feasible.
+
+### TF-IDF MCQ baseline
+
+The Part I classical baseline treats each QA-valid MCQ as four binary
+question--candidate examples: one positive correct option and three negative
+options. A TF-IDF vocabulary is fit only on `part1_train` question and option
+text. The logistic classifier receives candidate TF-IDF features, sparse
+element-wise question--candidate interactions, and a cosine-similarity scalar.
+It does not receive answer positions, other distractors, gold labels, or expert
+explanations as input.
+
+At inference, the model independently scores all four candidates and chooses
+the highest-scoring option (ties select the earliest option). Those values are
+binary correctness scores, not a normalized four-class distribution or medical
+confidence. Training uses binary candidate labels, but the reported primary
+metric is original-MCQ answer accuracy on `internal_dev`.
+
+Run a small local smoke experiment after generating partitions:
+
+```bash
+uv run python scripts/train_tfidf.py --seed 42 --max-train-questions 200 --max-dev-questions 50 --model-dir checkpoints/tfidf-smoke --output-dir outputs/tfidf-smoke
+```
+
+Run the full CPU experiment with:
+
+```bash
+uv run python scripts/train_tfidf.py --seed 42
+```
+
+Artifacts are saved under `checkpoints/tfidf/` and `outputs/tfidf/` by default:
+the fitted vectorizer/classifier, configuration, metrics, subject accuracy, and
+a deterministic capped error sample. `internal_dev` is only for development;
+the official validation split remains reserved for later comparative
+evaluation. Lexical TF-IDF is intentionally lightweight and interpretable, but
+has limited capacity for clinical reasoning, paraphrase, and long-range medical
+context.
+
+The completed seed-42 baseline scored **39.84% (3,642/9,141)** on
+`internal_dev`, after training on 137,117 MCQs (548,468 candidate pairs).
+This is an internal-development result, not final validation accuracy; the
+official validation split remains reserved for later model comparison.
 
 ## Part II Embedding Models
 
@@ -93,7 +129,7 @@ Part II: Recall@1, Recall@3, Recall@5, MRR, downstream groundedness, unsupported
 - PEFT / LoRA
 - scikit-learn
 - SentenceTransformers
-- Gradio
+- React 19, TypeScript, Vite, Tailwind CSS, and localStorage-backed preview adapters
 - uv
 - Git / GitHub
 
@@ -105,7 +141,9 @@ uv sync
 
 ## Project Status
 
-Current phase: dataset exploration and preprocessing.
+Current phase: Step 1 partitions and the TF-IDF MCQ baseline are complete.
+Scratch Seq2Seq, FLAN-T5 + LoRA, retrieval experiments, and backend integration
+remain planned research work.
 
 ## Disclaimer
 
