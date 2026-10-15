@@ -32,3 +32,17 @@ retrieval indices.
 Validation and test explanations must not be included in the retrieval
 corpus because doing so would leak gold-answer information into the
 evaluation process.
+
+## Generated partition artifacts
+
+`scripts/generate_splits.py` partitions only the official training split into
+`part1_train` (75%), `retrieval_kb` (20%), and `internal_dev` (5%). Identical
+normalized questions are grouped before partitioning, preventing duplicate
+question leakage. The generated `retrieval_kb_evidence` subset is filtered
+from `retrieval_kb` and requires valid QA fields plus a nonblank explanation;
+rows lacking explanations remain available in their primary QA partition.
+
+Run `uv run python scripts/generate_splits.py --seed 42`. The resulting
+`data/splits/manifest.json` records membership fingerprints, validity counts,
+duplicate statistics, and validation/test overlap warnings. Generated dataset
+directories and manifests are local artifacts and must not be committed.
