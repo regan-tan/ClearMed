@@ -64,9 +64,9 @@ const PREDICTIONS: Record<string, McqPrediction> = {
   },
   q4: {
     question_id: 'q4',
-    predicted: 'A',
+    predicted: 'C',
     explanation:
-      'The t(9;22) translocation creates the BCR-ABL fusion gene, which is the hallmark of acute myeloid leukaemia.',
+      'The t(9;22) translocation creates the BCR-ABL fusion gene, which is the hallmark of chronic myeloid leukaemia.',
   },
 }
 

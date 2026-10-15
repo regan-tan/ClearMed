@@ -12,6 +12,7 @@ dependencies = [
     "bert-score>=0.3.13",
     "datasets>=5.0.1",
     "evaluate>=0.4.6",
+    "joblib>=1.5.3",
     "numpy>=2.4.6",
     "pandas>=3.0.6",
     "peft>=0.21.0",

@@ -6,10 +6,10 @@ Medical students commonly use question banks with fixed explanations. ClearMed S
 
 ## 2. Research Questions
 
-- RQ1: Does LoRA fine-tuning of FLAN-T5 improve medical MCQ performance compared with classical and scratch-trained NLP baselines?
-- RQ2: Can retrieval-grounded generation improve follow-up reliability and reduce unsupported medical claims?
-- RQ3: How does embedding-model choice affect retrieval effectiveness for medical follow-up questions?
-- RQ4: Does stronger retrieval lead to more accurate and better-grounded conversational responses?
+- RQ1: MCQ accuracy — TF-IDF vs Scratch Seq2Seq vs FLAN-T5 + LoRA.
+- RQ2: Explanation quality — Scratch Seq2Seq vs FLAN-T5 + LoRA.
+- RQ3: Retrieval effectiveness — MiniLM vs E5-base-v2 vs BioLORD-2023.
+- RQ4: Effect of retrieval quality on grounded conversational responses.
 
 ## 3. Dataset
 
@@ -22,6 +22,11 @@ The primary dataset is MedMCQA, which includes MCQ questions, answer options, co
 - **TF-IDF baseline:** a lightweight classical NLP reference point.
 - **Scratch Seq2Seq:** an LSTM/GRU encoder-decoder with attention, used to compare learning without pretrained language representations.
 - **FLAN-T5 + LoRA:** the main proposed pretrained encoder-decoder model, fine-tuned efficiently with LoRA.
+
+The completed TF-IDF baseline is evaluated only on the generated
+`internal_dev` partition: 39.84% MCQ accuracy (3,642/9,141) after training on
+137,117 MCQs / 548,468 candidate pairs with seed 42. It is an internal-dev
+result, not final validation accuracy.
 
 ### 4.2 Training Workflow
 
