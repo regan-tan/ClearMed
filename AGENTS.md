@@ -218,6 +218,7 @@ Treat explanation generation as a separate evaluation objective.
 - Use the same documented retrieval benchmark across MiniLM, E5-base-v2, and BioLORD-2023.
 - Report Recall@K, MRR, nDCG, or similar metrics only when supported by appropriate relevance judgments.
 - Prevent evaluation-answer leakage into retrieval indexes or queries.
+- Exception: retrieval-only evaluation (RQ3) and threshold calibration may use the gold answer label (`cop`) as answer context in queries, so embedding models are compared under identical correct context. Reference explanations (`exp`) must never enter queries. End-to-end evaluation (RQ4) and the live tutor must use the model's predicted answer only.
 - Record retrieved evidence, source identifiers, and grounding/citation assessment for conversational experiments.
 - Keep retrieval quality and generated-answer quality as distinct measurements.
 
