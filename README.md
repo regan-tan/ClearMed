@@ -43,7 +43,7 @@ the script refuses to overwrite a non-empty one.
 ## Part I Models
 
 1. TF-IDF baseline
-2. Scratch Seq2Seq using LSTM/GRU with attention
+2. Scratch Seq2Seq using bidirectional GRU with attention
 3. FLAN-T5 + LoRA
 
 FLAN-T5-small is intended for local development and smoke testing. FLAN-T5-base is the intended main GPU experiment if feasible.
@@ -88,6 +88,42 @@ The completed seed-42 baseline scored **39.84% (3,642/9,141)** on
 `internal_dev`, after training on 137,117 MCQs (548,468 candidate pairs).
 This is an internal-development result, not final validation accuracy; the
 official validation split remains reserved for later model comparison.
+
+### Scratch Seq2Seq baseline
+
+The Part I neural baseline is a PyTorch encoder-decoder trained from random
+initialisation, with no pretrained weights: a bidirectional GRU encoder,
+additive (Bahdanau) attention with padding masks, and a GRU decoder. The source
+is the question plus all four labelled options; each segment is truncated
+separately, so no option can be dropped. The target is the answer label
+followed by the expert explanation, rendered as `Answer: X` /
+`Explanation: ...`. Rows without an explanation get an answer-only target, so
+no explanation text is fabricated. The vocabulary is fit only on `part1_train`,
+and gold labels and explanations never enter model inputs.
+
+Training uses teacher forcing, AdamW, and gradient clipping. Each epoch is
+evaluated with greedy generation on `internal_dev`; the checkpoint with the
+best accuracy is kept, and training stops early once accuracy stops improving.
+Predictions are parsed strictly; outputs without a valid A–D label count as
+`MALFORMED` and are scored by the shared `clearmed.evaluation.qa` evaluator.
+
+Run a small local smoke experiment after generating partitions:
+
+```bash
+uv run python scripts/train_seq2seq.py --max-train-questions 2000 --max-dev-questions 300 --max-epochs 3 --run-id smoke-2k
+```
+
+Run the full experiment on a GPU, then evaluate the selected checkpoint:
+
+```bash
+uv run python scripts/train_seq2seq.py --device cuda --batch-size 128 --run-id full-seed42
+uv run python scripts/evaluate_seq2seq.py --checkpoint-dir checkpoints/seq2seq/full-seed42/best --output-dir outputs/seq2seq/full-seed42/eval-internal-dev
+```
+
+Artifacts are saved under `checkpoints/seq2seq/<run_id>/` and
+`outputs/seq2seq/<run_id>/`. The full-data GPU run has not been performed yet.
+See [docs/seq2seq.md](docs/seq2seq.md) for explanation-coverage statistics,
+preprocessing decisions, smoke-test results, and known limitations.
 
 ## Part II Embedding Models
 
@@ -141,8 +177,9 @@ uv sync
 
 ## Project Status
 
-Current phase: Step 1 partitions and the TF-IDF MCQ baseline are complete.
-Scratch Seq2Seq, FLAN-T5 + LoRA, retrieval experiments, and backend integration
+Current phase: Step 1 partitions and the TF-IDF MCQ baseline are complete. The
+Scratch Seq2Seq pipeline is implemented and smoke-tested; its full GPU training
+run is pending. FLAN-T5 + LoRA, retrieval experiments, and backend integration
 remain planned research work.
 
 ## Disclaimer
