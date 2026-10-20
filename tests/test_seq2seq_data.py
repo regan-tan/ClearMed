@@ -14,6 +14,7 @@ from clearmed.data.seq2seq import (
     encode_target,
     parse_answer_label,
     parse_explanation,
+    parse_generation_output,
     render_output,
     tokenize,
 )
@@ -129,9 +130,37 @@ def test_malformed_outputs_are_not_coerced(vocab, tokens):
     assert parse_answer_label(raw) is None
 
 
-@pytest.mark.parametrize("text", ["answer: C", "Answer: E", "The Answer: C", "Answer: CD"])
-def test_strict_parser_rejects_lookalikes(text):
+@pytest.mark.parametrize(
+    "text", ["A", "B.", "Answer: C", "Answer: D\nExplanation: Because.", "Answer: A Explanation: Because."]
+)
+def test_shared_parser_accepts_only_unambiguous_answer_forms(text):
+    assert parse_answer_label(text) in {"A", "B", "C", "D"}
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["answer: C", "Answer: E", "The Answer: C", "Answer: CD", "A or B", "B12.", "ASD", "DPT", "CLL", "A beta C. III"],
+)
+def test_shared_parser_rejects_lookalikes_and_ambiguous_outputs(text):
     assert parse_answer_label(text) is None
+
+
+def test_parser_separates_valid_answer_from_requested_explanation_format():
+    standalone = parse_generation_output("C.")
+    assert standalone.predicted_answer == "C"
+    assert standalone.answer_parse_mode == "standalone_letter"
+    assert not standalone.answer_explanation_format_compliant
+    assert standalone.generated_explanation == ""
+
+    formatted = parse_generation_output("Answer: D\nExplanation: Because it is indicated.")
+    assert formatted.predicted_answer == "D"
+    assert formatted.answer_explanation_format_compliant
+    assert formatted.generated_explanation == "Because it is indicated."
+
+    tokenizer_rendered = parse_generation_output("Answer: A Explanation: T5 normalized the newline.")
+    assert tokenizer_rendered.predicted_answer == "A"
+    assert tokenizer_rendered.answer_explanation_format_compliant
+    assert tokenizer_rendered.generated_explanation == "T5 normalized the newline."
 
 
 def test_vocabulary_round_trips_through_dict(vocab):

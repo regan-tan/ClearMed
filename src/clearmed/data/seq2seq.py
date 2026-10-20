@@ -40,7 +40,21 @@ ANSWER_TOKEN_TO_LABEL = dict(zip(ANSWER_TOKENS, OPTION_LABELS, strict=True))
 SPECIAL_TOKENS = (PAD, UNK, SOS, EOS, QUESTION_MARKER, *OPTION_MARKERS, *ANSWER_TOKENS)
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+(?:[-'][a-z0-9]+)*|[^\sa-z0-9]")
-_STRICT_ANSWER_PATTERN = re.compile(r"\AAnswer: ([ABCD])(?:\n|\Z)")
+_ANSWER_AND_EXPLANATION_PATTERN = re.compile(
+    r"\AAnswer: ([ABCD])(?:\r?\n|[ \t]+)Explanation:(?:[ \t]*(.*))?\Z", re.DOTALL
+)
+_ANSWER_ONLY_PATTERN = re.compile(r"\AAnswer: ([ABCD])\Z")
+_STANDALONE_ANSWER_PATTERN = re.compile(r"\A([ABCD])\.?\Z")
+
+
+@dataclass(frozen=True)
+class ParsedGeneration:
+    """Strictly interpreted generation output for answer and format reporting."""
+
+    predicted_answer: str | None
+    generated_explanation: str
+    answer_parse_mode: str
+    answer_explanation_format_compliant: bool
 
 
 def tokenize(text: str) -> list[str]:
@@ -347,15 +361,38 @@ def render_output(token_ids: Iterable[int], vocab: Vocabulary) -> str:
     return f"Answer: {answer}\nExplanation: {explanation}".rstrip()
 
 
+def parse_generation_output(raw_output: str) -> ParsedGeneration:
+    """Parse only unambiguous MCQ answers without repairing model output.
+
+    Accepted answers are the requested ``Answer: X`` form (with optional
+    ``Explanation:`` field), or a standalone ``A``--``D`` optionally followed
+    by a period. T5 decoding normalizes target newlines into spaces, so the
+    structural ``Answer: X Explanation: ...`` rendering is equivalent to the
+    newline form. Anything containing additional answer-like text is malformed
+    rather than guessed, e.g. ``A or B``, ``B12.``, and ``ASD``.
+    """
+    output = (raw_output or "").strip()
+    match = _ANSWER_AND_EXPLANATION_PATTERN.fullmatch(output)
+    if match:
+        explanation = (match.group(2) or "").strip()
+        return ParsedGeneration(match.group(1), explanation, "answer_and_explanation", True)
+    match = _ANSWER_ONLY_PATTERN.fullmatch(output)
+    if match:
+        return ParsedGeneration(match.group(1), "", "answer_only", False)
+    match = _STANDALONE_ANSWER_PATTERN.fullmatch(output)
+    if match:
+        return ParsedGeneration(match.group(1), "", "standalone_letter", False)
+    return ParsedGeneration(None, "", "malformed", False)
+
+
 def parse_answer_label(raw_output: str) -> str | None:
-    """Strict parser: returns A-D only for an output that *starts* ``Answer: X``."""
-    match = _STRICT_ANSWER_PATTERN.match(raw_output or "")
-    return match.group(1) if match else None
+    """Return only a strictly unambiguous A--D prediction, if present."""
+    return parse_generation_output(raw_output).predicted_answer
 
 
 def parse_explanation(raw_output: str) -> str:
-    _, _, explanation = (raw_output or "").partition("\nExplanation:")
-    return explanation.strip()
+    """Return an explicitly generated explanation; never infer one."""
+    return parse_generation_output(raw_output).generated_explanation
 
 
 def config_to_dict(config: Seq2SeqDataConfig) -> dict[str, Any]:
