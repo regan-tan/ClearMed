@@ -98,6 +98,10 @@ def test_train_then_evaluate_end_to_end(tmp_path):
     record = json.loads(lines[0])
     assert set(record) >= {"example_id", "gold_label", "predicted_label", "raw_output", "generated_explanation"}
     assert record["predicted_label"] in {"A", "B", "C", "D", "MALFORMED"}
+    assert record["answer_parse_mode"] in {
+        "answer_and_explanation", "answer_only", "standalone_letter", "malformed"
+    }
+    assert isinstance(record["answer_explanation_format_compliant"], bool)
     assert metrics["explanation_overlap"]["rows_with_reference"] == 3
 
 

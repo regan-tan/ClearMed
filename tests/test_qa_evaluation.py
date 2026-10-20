@@ -1,3 +1,4 @@
+from clearmed.data.seq2seq import parse_answer_label
 from clearmed.evaluation.qa import evaluate_mcq_predictions
 
 
@@ -44,3 +45,15 @@ def test_error_limit_and_missing_subject_are_deterministic():
     assert len(metrics["errors"]) == 1
     assert metrics["subject_accuracy"][0]["subject_name"] == "Medicine"
     assert metrics["subject_accuracy"][1]["subject_name"] == "Unknown"
+
+
+def test_shared_evaluator_scores_standalone_letters_but_keeps_ambiguous_output_malformed():
+    rows = [row(0), row(1), row(2)]
+    raw_outputs = iter(["A", "B.", "B12."])
+    metrics = evaluate_mcq_predictions(
+        rows, lambda _: {"predicted_answer": parse_answer_label(next(raw_outputs))}
+    )
+
+    assert metrics["correct"] == 2
+    assert metrics["malformed_output_count"] == 1
+    assert metrics["confusion_matrix"]["C"]["MALFORMED"] == 1

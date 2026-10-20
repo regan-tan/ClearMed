@@ -100,6 +100,10 @@ def run_evaluation(args: argparse.Namespace) -> dict[str, Any]:
                 "predicted_label": generated["predicted_answer"] or "MALFORMED",
                 "raw_output": generated["raw_output"],
                 "generated_explanation": generated["generated_explanation"],
+                "answer_parse_mode": generated["answer_parse_mode"],
+                "answer_explanation_format_compliant": generated[
+                    "answer_explanation_format_compliant"
+                ],
                 "reference_explanation": reference,
                 "subject_name": row.get("subject_name"),
             }

@@ -22,8 +22,7 @@ from clearmed.data.seq2seq import (
     Vocabulary,
     collate_examples,
     encode_example,
-    parse_answer_label,
-    parse_explanation,
+    parse_generation_output,
     render_output,
 )
 from clearmed.models.seq2seq import Seq2SeqModel, Seq2SeqModelConfig
@@ -177,12 +176,15 @@ class Seq2SeqPredictor:
         results = []
         for example, ids in zip(examples, generated.tolist(), strict=True):
             raw_output = render_output(ids, self.vocab)
+            parsed = parse_generation_output(raw_output)
             results.append(
                 {
                     "example_id": example.example_id,
-                    "predicted_answer": parse_answer_label(raw_output),
+                    "predicted_answer": parsed.predicted_answer,
                     "raw_output": raw_output,
-                    "generated_explanation": parse_explanation(raw_output),
+                    "generated_explanation": parsed.generated_explanation,
+                    "answer_parse_mode": parsed.answer_parse_mode,
+                    "answer_explanation_format_compliant": parsed.answer_explanation_format_compliant,
                 }
             )
         return results
