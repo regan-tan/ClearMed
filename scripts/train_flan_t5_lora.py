@@ -1,11 +1,9 @@
-"""Fine-tune FLAN-T5 with LoRA on saved ClearMed Part I partitions.
+"""Run a reproducible, resumable FLAN-T5 + LoRA Part I training experiment.
 
-The complete canonical partitions are verified before optional smoke-test
-subsetting.  Example smoke run (requires a locally cached/downloadable model):
-
-    uv run python scripts/train_flan_t5_lora.py --max-train-questions 8 \
-        --max-dev-questions 4 --batch-size 2 --max-steps 1 --device cpu \
-        --run-id flan-smoke-v1
+The default is a real training budget (three epochs, no sample cap), not the
+old diagnostic cap.  Use ``--max-*-questions`` and ``--max-steps`` only for a
+bounded smoke run.  Full generated evaluation is intentionally a separate
+``evaluate_flan_t5_lora.py`` stage.
 """
 
 from __future__ import annotations
@@ -14,38 +12,29 @@ import argparse
 import json
 import platform
 import sys
+from dataclasses import asdict
 from datetime import UTC, datetime
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-from statistics import mean
 from time import perf_counter
 from typing import Any
 
 import peft
 import torch
 import transformers
-from rouge_score import rouge_scorer
 
 from clearmed.data.flan_t5 import FlanT5DataConfig, FlanT5MCQDataset
-from clearmed.data.preprocessing import (
-    get_answer_label,
-    is_nonblank_text,
-    is_valid_qa_example,
-)
 from clearmed.data.splitting import assert_train_dev_disjoint, membership_fingerprint
-from clearmed.evaluation.qa import evaluate_mcq_predictions
 from clearmed.models.flan_t5_lora import (
     FlanT5LoraConfig,
     load_flan_t5_lora,
+    load_saved_adapter,
     parameter_counts,
 )
 from clearmed.training.flan_t5_lora import (
-    FlanT5Predictor,
     FlanT5TrainConfig,
-    load_adapter_checkpoint,
-    save_adapter_checkpoint,
+    run_resumable_training,
     set_seed,
-    train_steps,
 )
 
 
@@ -63,117 +52,94 @@ _helpers = _load_tfidf_helpers()
 load_partition = _helpers._load_partition
 verify_manifest = _helpers._verify_manifest
 subset = _helpers._subset
-prepare_directory = _helpers._prepare_directory
 positive_int = _helpers._positive_int
 
 
-def resolve_device(name: str) -> torch.device:
+def resolve_device(name: str, *, require_cuda: bool = False) -> torch.device:
     if name == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if name.startswith("cuda") and not torch.cuda.is_available():
-        raise RuntimeError("--device cuda requested but CUDA is not available.")
-    return torch.device(name)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device(name)
+    if (name.startswith("cuda") or require_cuda) and not torch.cuda.is_available():
+        raise RuntimeError("CUDA is required for this run but is not available; refusing a silent CPU fallback.")
+    if require_cuda and device.type != "cuda":
+        raise RuntimeError("--require-cuda requires --device cuda or --device auto with CUDA available.")
+    return device
 
 
-def explanation_overlap(predictions: list[dict[str, Any]]) -> dict[str, Any]:
-    scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=False)
-    scores = [
-        scorer.score(item["reference_explanation"], item["generated_explanation"])["rougeL"].fmeasure
-        for item in predictions if item["reference_explanation"]
-    ]
-    return {
-        "rows_with_reference": len(scores), "rouge_l_f1_mean": mean(scores) if scores else None,
-        "note": "Reference overlap is supplementary; RQ2 also needs factual and human-quality assessment.",
-    }
+def _claim_fresh_directory(path: Path) -> None:
+    if path.exists() and any(path.iterdir()):
+        raise FileExistsError(f"Run directory is not empty: {path}. Choose a new --run-id or use --resume.")
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _serializable_args(args: argparse.Namespace) -> dict[str, Any]:
+    return {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()}
+
+
+def _validation_subset(dev: Any, limit: int | None, seed: int) -> Any:
+    if limit is None or limit >= len(dev):
+        return dev
+    return subset(dev, limit, seed)
 
 
 def run_training(args: argparse.Namespace) -> dict[str, Any]:
+    """Train only from canonical Part I data and save a resumable experiment."""
     complete_train = load_partition(args.train_dir, "part1_train")
     complete_dev = load_partition(args.dev_dir, "internal_dev")
     assert_train_dev_disjoint(complete_train, complete_dev, train_name="part1_train", development_name="internal_dev")
-    manifest_verification = verify_manifest(
-        train=complete_train, development=complete_dev, train_dir=args.train_dir,
-        dev_dir=args.dev_dir, manifest_path=args.manifest,
-    )
+    manifest_verification = verify_manifest(train=complete_train, development=complete_dev, train_dir=args.train_dir, dev_dir=args.dev_dir, manifest_path=args.manifest)
     train = subset(complete_train, args.max_train_questions, args.seed)
     dev = subset(complete_dev, args.max_dev_questions, args.seed)
+    validation = _validation_subset(dev, args.validation_questions, args.seed)
     checkpoint_dir, output_dir = args.checkpoint_root / args.run_id, args.output_root / args.run_id
-    prepare_directory(checkpoint_dir, overwrite=args.overwrite)
-    prepare_directory(output_dir, overwrite=args.overwrite)
+    if args.resume:
+        if not checkpoint_dir.is_dir() or not output_dir.is_dir():
+            raise FileNotFoundError("--resume requires existing checkpoint and output run directories.")
+    else:
+        _claim_fresh_directory(checkpoint_dir)
+        _claim_fresh_directory(output_dir)
 
+    device = resolve_device(args.device, require_cuda=args.require_cuda)
     set_seed(args.seed)
-    device = resolve_device(args.device)
-    lora_config = FlanT5LoraConfig(
-        model_name=args.model_name, rank=args.lora_rank, alpha=args.lora_alpha,
-        dropout=args.lora_dropout, target_modules=tuple(args.lora_target_modules),
-    )
+    lora_config = FlanT5LoraConfig(model_name=args.model_name, rank=args.lora_rank, alpha=args.lora_alpha, dropout=args.lora_dropout, target_modules=tuple(args.lora_target_modules))
     data_config = FlanT5DataConfig(args.max_source_length, args.max_target_length)
-    train_config = FlanT5TrainConfig(
-        seed=args.seed, batch_size=args.batch_size, learning_rate=args.learning_rate,
-        weight_decay=args.weight_decay, gradient_clip=args.gradient_clip, max_steps=args.max_steps,
-    )
-    model, tokenizer = load_flan_t5_lora(lora_config)
+    train_config = FlanT5TrainConfig(seed=args.seed, batch_size=args.batch_size, learning_rate=args.learning_rate, weight_decay=args.weight_decay, gradient_clip=args.gradient_clip, max_steps=args.max_steps, epochs=args.epochs, gradient_accumulation_steps=args.gradient_accumulation_steps, warmup_steps=args.warmup_steps, precision=args.precision)
+    latest_adapter = checkpoint_dir / "latest" / "adapter"
+    if args.resume:
+        model, tokenizer = load_saved_adapter(str(latest_adapter), args.model_name, is_trainable=True)
+    else:
+        model, tokenizer = load_flan_t5_lora(lora_config)
     model.to(device)
     train_dataset = FlanT5MCQDataset(list(train), tokenizer, data_config)
-    dev_rows = [row for row in dev if is_valid_qa_example(row)]
-    if not train_dataset.examples:
-        raise ValueError("No QA-valid training rows remain after validation.")
-
-    start = perf_counter()
-    losses = train_steps(model, train_dataset.examples, tokenizer, data_config, train_config, device)
-    training_seconds = perf_counter() - start
+    validation_dataset = FlanT5MCQDataset(list(validation), tokenizer, data_config)
+    if not train_dataset.examples or not validation_dataset.examples:
+        raise ValueError("No QA-valid training or validation rows remain after validation.")
     data_identity = {
-        "train_partition": "part1_train", "dev_partition": "internal_dev",
-        "selected_train_fingerprint": membership_fingerprint(train),
-        "selected_dev_fingerprint": membership_fingerprint(dev),
+        "train_partition": "part1_train", "development_partition": "internal_dev",
+        "complete_train_fingerprint": membership_fingerprint(complete_train), "complete_dev_fingerprint": membership_fingerprint(complete_dev),
+        "selected_train_fingerprint": membership_fingerprint(train), "selected_development_fingerprint": membership_fingerprint(dev),
+        "validation_subset_fingerprint": membership_fingerprint(validation), "validation_subset_selection": {"method": "deterministic_shuffle_then_prefix", "seed": args.seed, "requested_size": args.validation_questions, "actual_rows": len(validation)},
     }
-    save_adapter_checkpoint(
-        checkpoint_dir, model=model, tokenizer=tokenizer, model_name=args.model_name,
-        data_config=data_config, train_config=train_config,
-        extra={"run_id": args.run_id, "lora_config": lora_config.to_dict(), "data_identity": data_identity},
-    )
-
-    predictor = FlanT5Predictor(model, tokenizer, data_config, device)
-    predict, generated = predictor.cached_predictor(dev_rows, batch_size=args.batch_size, max_new_tokens=args.max_new_tokens)
-    reloaded_model, reloaded_tokenizer, reloaded_data_config, _ = load_adapter_checkpoint(checkpoint_dir, device)
-    reloaded_generated = FlanT5Predictor(
-        reloaded_model, reloaded_tokenizer, reloaded_data_config, device
-    ).generate_batch(dev_rows, batch_size=args.batch_size, max_new_tokens=args.max_new_tokens)
-    reload_verified = [item["raw_output"] for item in generated] == [
-        item["raw_output"] for item in reloaded_generated
-    ]
-    if not reload_verified:
-        raise RuntimeError("Saved and reloaded LoRA adapter produced different greedy outputs.")
-    evaluation = evaluate_mcq_predictions(dev_rows, predict, error_limit=args.error_limit)
-    predictions = []
-    for row, item in zip(dev_rows, generated, strict=True):
-        reference = row.get("exp").strip() if is_nonblank_text(row.get("exp")) else ""
-        predictions.append({
-            **item, "gold_label": get_answer_label(row),
-            "predicted_label": item["predicted_answer"] or "MALFORMED",
-            "reference_explanation": reference, "subject_name": row.get("subject_name"),
-        })
-    metrics = {
-        "model_id": "flan_t5_lora", "model_name": args.model_name, "run_id": args.run_id,
-        "created_utc": datetime.now(UTC).isoformat(), "device": str(device),
-        "lora_config": lora_config.to_dict(), "parameter_counts": parameter_counts(model),
-        "data_config": vars(data_config), "train_config": vars(train_config), "data_identity": data_identity,
-        "manifest_verification": manifest_verification, "train_data_statistics": train_dataset.statistics(),
-        "selected_dev_questions": len(dev), "training_steps": len(losses),
-        "training_loss_mean": mean(losses), "training_seconds": training_seconds,
-        "saved_adapter_reload_verified": reload_verified,
-        "decoding": {"strategy": "greedy", "do_sample": False, "max_new_tokens": args.max_new_tokens},
-        "mcq_metrics": {key: value for key, value in evaluation.items() if key not in {"errors", "subject_accuracy"}},
-        "explanation_overlap": explanation_overlap(predictions),
-        "environment": {"python": sys.version, "platform": platform.platform(), "torch": torch.__version__, "transformers": transformers.__version__, "peft": peft.__version__},
+    metadata = {
+        "model_id": "flan_t5_lora", "run_id": args.run_id, "created_utc": datetime.now(UTC).isoformat(), "requested_arguments": _serializable_args(args),
+        "lora_config": lora_config.to_dict(), "data_config": asdict(data_config), "train_config": asdict(train_config), "data_identity": data_identity,
+        "manifest_verification": manifest_verification, "train_data_statistics": train_dataset.statistics(), "validation_data_statistics": validation_dataset.statistics(),
+        "environment": {"python": sys.version, "platform": platform.platform(), "torch": torch.__version__, "transformers": transformers.__version__, "peft": peft.__version__, "device": str(device), "cuda_available": torch.cuda.is_available(), "cuda_device_name": torch.cuda.get_device_name(device) if device.type == "cuda" else None},
+        "checkpoint_selection": {"metric": "minimum_teacher_forced_validation_loss", "partition": "deterministic internal_dev subset", "generation_during_training": False},
     }
-    (output_dir / "config.json").write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    (output_dir / "metrics.json").write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    (output_dir / "training_history.json").write_text(json.dumps({"losses": losses}, indent=2) + "\n", encoding="utf-8")
-    with (output_dir / "predictions.jsonl").open("w", encoding="utf-8") as handle:
-        for item in predictions:
-            handle.write(json.dumps(item, ensure_ascii=False, sort_keys=True) + "\n")
-    return metrics
+    (output_dir / "config.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    start = perf_counter()
+    training = run_resumable_training(model=model, tokenizer=tokenizer, train_examples=train_dataset.examples, validation_examples=validation_dataset.examples, data_config=data_config, train_config=train_config, device=device, run_checkpoint_dir=checkpoint_dir, model_name=args.model_name, lora_config=lora_config.to_dict(), data_identity=data_identity, validation_interval_steps=args.validation_interval_steps, checkpoint_interval_steps=args.checkpoint_interval_steps, early_stopping_patience=args.early_stopping_patience, resume=args.resume)
+    elapsed = perf_counter() - start
+    history = training["history"]
+    with (output_dir / "training_history.jsonl").open("w", encoding="utf-8") as handle:
+        for event in history:
+            handle.write(json.dumps(event, sort_keys=True) + "\n")
+    validation_events = [event for event in history if event["event"] == "validation"]
+    result = {**metadata, "parameter_counts": parameter_counts(model), "training": {key: value for key, value in training.items() if key != "history"}, "training_duration_seconds_this_invocation": elapsed, "validation_events": validation_events, "best_adapter_dir": str(checkpoint_dir / "best"), "latest_training_state_dir": str(checkpoint_dir / "latest")}
+    (output_dir / "metrics.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -181,9 +147,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--train-dir", type=Path, default=Path("data/splits/part1_train"))
     parser.add_argument("--dev-dir", type=Path, default=Path("data/splits/internal_dev"))
     parser.add_argument("--manifest", type=Path, default=Path("data/splits/manifest.json"))
-    parser.add_argument("--max-train-questions", type=positive_int)
-    parser.add_argument("--max-dev-questions", type=positive_int)
-    parser.add_argument("--model-name", default="google/flan-t5-small")
+    parser.add_argument("--max-train-questions", type=positive_int, help="Diagnostic-only deterministic cap; omit for all eligible part1_train rows.")
+    parser.add_argument("--max-dev-questions", type=positive_int, help="Diagnostic-only deterministic cap; omit for all internal_dev rows.")
+    parser.add_argument("--validation-questions", type=positive_int, default=512, help="Deterministic internal_dev subset used for teacher-forced checkpoint selection.")
+    parser.add_argument("--model-name", default="google/flan-t5-base")
     parser.add_argument("--max-source-length", type=positive_int, default=512)
     parser.add_argument("--max-target-length", type=positive_int, default=192)
     parser.add_argument("--lora-rank", type=positive_int, default=8)
@@ -191,25 +158,31 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--lora-target-modules", nargs="+", default=["q", "v"])
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--batch-size", type=positive_int, default=8)
+    parser.add_argument("--batch-size", type=positive_int, default=4)
+    parser.add_argument("--gradient-accumulation-steps", type=positive_int, default=4)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--gradient-clip", type=float, default=1.0)
-    parser.add_argument("--max-steps", type=positive_int, default=1000)
-    parser.add_argument("--max-new-tokens", type=positive_int, default=128)
+    parser.add_argument("--epochs", type=positive_int, default=3)
+    parser.add_argument("--max-steps", type=positive_int, help="Optional optimizer-step ceiling; omit for the epoch budget.")
+    parser.add_argument("--warmup-steps", type=int, default=0)
+    parser.add_argument("--precision", choices=["auto", "fp32", "fp16", "bf16"], default="auto")
+    parser.add_argument("--validation-interval-steps", type=positive_int, default=500)
+    parser.add_argument("--checkpoint-interval-steps", type=positive_int, default=250)
+    parser.add_argument("--early-stopping-patience", type=positive_int)
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--require-cuda", action="store_true")
     parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%d-%H%M%S"))
     parser.add_argument("--checkpoint-root", type=Path, default=Path("checkpoints/flan_t5_lora"))
     parser.add_argument("--output-root", type=Path, default=Path("outputs/flan_t5_lora"))
-    parser.add_argument("--error-limit", type=int, default=50)
-    parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--resume", action="store_true", help="Continue exactly the named run from checkpoints/.../<run-id>/latest.")
     return parser
 
 
 def main() -> None:
     metrics = run_training(build_parser().parse_args())
-    result = metrics["mcq_metrics"]
-    print(f"accuracy={result['accuracy']:.4f} ({result['correct']}/{result['total_evaluated']})")
+    progress = metrics["training"]["progress"]
+    print(f"complete global_step={progress['global_step']} best_validation_loss={progress['best_validation_loss']}")
 
 
 if __name__ == "__main__":
