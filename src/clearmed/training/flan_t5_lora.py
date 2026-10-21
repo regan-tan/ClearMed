@@ -14,6 +14,7 @@ import random
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import numpy as np
@@ -31,6 +32,7 @@ from clearmed.models.flan_t5_lora import load_saved_adapter
 METADATA_FILENAME = "adapter_metadata.json"
 TRAINING_STATE_FILENAME = "training_state.pt"
 TRAINING_METADATA_FILENAME = "training_metadata.json"
+PROGRESS_INTERVAL_STEPS = 25
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,104 @@ class TrainingProgress:
     global_step: int = 0
     best_validation_loss: float | None = None
     validation_events_without_improvement: int = 0
+
+
+def _synchronize_cuda(device: torch.device) -> None:
+    """Wait for queued CUDA work before taking a wall-clock measurement."""
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+
+
+@dataclass
+class TrainingPerformance:
+    """Wall-clock and CUDA-memory measurements for one training invocation.
+
+    Training time is accumulated only while optimizer updates are in progress.
+    Validation and checkpoint work pause that interval so their overhead can be
+    reported separately. CUDA synchronization occurs only at measurement
+    boundaries, keeping the hot path asynchronous between progress reports.
+    """
+
+    device: torch.device
+    optimizer_steps: int = 0
+    optimizer_step_elapsed_seconds: float = 0.0
+    validation_elapsed_seconds: float = 0.0
+    checkpoint_elapsed_seconds: float = 0.0
+    _started_at: float | None = None
+    _active_started_at: float | None = None
+
+    def start(self) -> None:
+        if self.device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(self.device)
+        _synchronize_cuda(self.device)
+        self._started_at = perf_counter()
+        self._active_started_at = self._started_at
+
+    def pause_optimizer_time(self) -> None:
+        """Close the active optimizer interval at a CUDA-synchronized boundary."""
+        if self._active_started_at is None:
+            return
+        _synchronize_cuda(self.device)
+        self.optimizer_step_elapsed_seconds += perf_counter() - self._active_started_at
+        self._active_started_at = None
+
+    def resume_optimizer_time(self) -> None:
+        if self._active_started_at is None:
+            self._active_started_at = perf_counter()
+
+    def record_validation(self, started_at: float) -> None:
+        _synchronize_cuda(self.device)
+        self.validation_elapsed_seconds += perf_counter() - started_at
+
+    def record_checkpoint(self, started_at: float) -> None:
+        _synchronize_cuda(self.device)
+        self.checkpoint_elapsed_seconds += perf_counter() - started_at
+
+    def progress_message(self, *, completed_steps: int, total_steps: int) -> str:
+        self.pause_optimizer_time()
+        elapsed = self.optimizer_step_elapsed_seconds
+        throughput = self.optimizer_steps / elapsed if elapsed > 0 else 0.0
+        self.resume_optimizer_time()
+        return (
+            f"[flan_t5_lora] optimizer_step={completed_steps}/{total_steps} "
+            f"elapsed_seconds={elapsed:.3f} "
+            f"optimizer_steps_per_second={throughput:.3f}"
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        self.pause_optimizer_time()
+        finished_at = perf_counter()
+        total_elapsed = finished_at - self._started_at if self._started_at is not None else 0.0
+        throughput = (
+            self.optimizer_steps / self.optimizer_step_elapsed_seconds
+            if self.optimizer_step_elapsed_seconds > 0
+            else 0.0
+        )
+        memory: dict[str, Any] = {
+            "unit": "bytes",
+            "peak_gpu_memory_allocated_bytes": None,
+            "peak_gpu_memory_reserved_bytes": None,
+            "total_device_vram_bytes": None,
+            "system_ram_measured": False,
+        }
+        if self.device.type == "cuda":
+            memory.update(
+                {
+                    "peak_gpu_memory_allocated_bytes": torch.cuda.max_memory_allocated(self.device),
+                    "peak_gpu_memory_reserved_bytes": torch.cuda.max_memory_reserved(self.device),
+                    "total_device_vram_bytes": torch.cuda.get_device_properties(self.device).total_memory,
+                }
+            )
+        return {
+            "measurement_scope": "this training invocation; CUDA peaks reset immediately before optimizer updates",
+            "total_elapsed_seconds": total_elapsed,
+            "optimizer_steps_this_invocation": self.optimizer_steps,
+            "optimizer_step_elapsed_seconds": self.optimizer_step_elapsed_seconds,
+            "optimizer_step_throughput_steps_per_second": throughput,
+            "validation_elapsed_seconds": self.validation_elapsed_seconds,
+            "checkpoint_elapsed_seconds": self.checkpoint_elapsed_seconds,
+            "gpu_memory": memory,
+        }
 
 
 def set_seed(seed: int) -> None:
@@ -374,8 +474,17 @@ def run_resumable_training(
         raise FileExistsError(f"Run checkpoint directory is not empty: {run_checkpoint_dir}. Use --resume for its latest state.")
     else:
         run_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    performance = TrainingPerformance(device)
+    performance.start()
     if progress.global_step >= budget:
-        return {"progress": asdict(progress), "history": history, "total_optimizer_steps": budget, "completed": True}
+        return {
+            "progress": asdict(progress),
+            "history": history,
+            "total_optimizer_steps": budget,
+            "completed": True,
+            "precision": precision,
+            "performance": performance.as_dict(),
+        }
 
     stop = False
     for epoch in range(progress.epoch, effective_config.epochs):
@@ -400,6 +509,7 @@ def run_resumable_training(
             scaler.update()
             scheduler.step()
             optimizer.zero_grad(set_to_none=True)
+            performance.optimizer_steps += 1
             next_epoch = epoch + 1 if batch_index + 1 == len(batches) else epoch
             next_batch = 0 if next_epoch != epoch else batch_index + 1
             progress = TrainingProgress(
@@ -410,7 +520,10 @@ def run_resumable_training(
             history.append({"event": "train", "global_step": progress.global_step, "epoch": epoch + 1, "loss": float(loss.detach().cpu()), "learning_rate": optimizer.param_groups[0]["lr"]})
             should_validate = progress.global_step % validation_interval_steps == 0 or progress.global_step >= budget
             if should_validate:
+                performance.pause_optimizer_time()
+                validation_started_at = perf_counter()
                 validation_loss = teacher_forced_loss(model, validation_examples, tokenizer, data_config, device, batch_size=effective_config.batch_size, precision=precision)
+                performance.record_validation(validation_started_at)
                 improved = progress.best_validation_loss is None or validation_loss < progress.best_validation_loss
                 misses = 0 if improved else progress.validation_events_without_improvement + 1
                 progress = TrainingProgress(
@@ -420,6 +533,7 @@ def run_resumable_training(
                 )
                 history.append({"event": "validation", "global_step": progress.global_step, "epoch": epoch + 1, "teacher_forced_loss": validation_loss, "improved": improved})
                 if improved:
+                    checkpoint_started_at = perf_counter()
                     if best_dir.exists() and any(best_dir.iterdir()):
                         # Best is internal to the current claimed run; PEFT safely replaces its adapter files.
                         model.save_pretrained(best_dir)
@@ -427,16 +541,33 @@ def run_resumable_training(
                         (best_dir / METADATA_FILENAME).write_text(json.dumps(_adapter_metadata(model_name=model_name, data_config=data_config, train_config=effective_config, extra={"selection_metric": "teacher_forced_validation_loss", "selected_global_step": progress.global_step, "selected_validation_loss": validation_loss, "data_identity": dict(data_identity), "lora_config": dict(lora_config)}), indent=2, sort_keys=True) + "\n", encoding="utf-8")
                     else:
                         save_adapter_checkpoint(best_dir, model=model, tokenizer=tokenizer, model_name=model_name, data_config=data_config, train_config=effective_config, extra={"selection_metric": "teacher_forced_validation_loss", "selected_global_step": progress.global_step, "selected_validation_loss": validation_loss, "data_identity": dict(data_identity), "lora_config": dict(lora_config)})
+                    performance.record_checkpoint(checkpoint_started_at)
                 if early_stopping_patience is not None and misses >= early_stopping_patience:
                     stop = True
             if progress.global_step % checkpoint_interval_steps == 0 or should_validate or stop:
+                performance.pause_optimizer_time()
+                checkpoint_started_at = perf_counter()
                 save_latest_training_checkpoint(latest_dir, model=model, tokenizer=tokenizer, optimizer=optimizer, scheduler=scheduler, scaler=scaler, progress=progress, model_name=model_name, data_config=data_config, train_config=effective_config, lora_config=lora_config, data_identity=data_identity, history=history)
+                performance.record_checkpoint(checkpoint_started_at)
+            if progress.global_step % PROGRESS_INTERVAL_STEPS == 0 or progress.global_step >= budget or stop:
+                print(performance.progress_message(completed_steps=progress.global_step, total_steps=budget), flush=True)
+            performance.resume_optimizer_time()
             if stop or progress.global_step >= budget:
                 break
         if stop or progress.global_step >= budget:
             break
+    performance.pause_optimizer_time()
+    checkpoint_started_at = perf_counter()
     save_latest_training_checkpoint(latest_dir, model=model, tokenizer=tokenizer, optimizer=optimizer, scheduler=scheduler, scaler=scaler, progress=progress, model_name=model_name, data_config=data_config, train_config=effective_config, lora_config=lora_config, data_identity=data_identity, history=history)
-    return {"progress": asdict(progress), "history": history, "total_optimizer_steps": budget, "completed": progress.global_step >= budget or stop, "precision": precision}
+    performance.record_checkpoint(checkpoint_started_at)
+    return {
+        "progress": asdict(progress),
+        "history": history,
+        "total_optimizer_steps": budget,
+        "completed": progress.global_step >= budget or stop,
+        "precision": precision,
+        "performance": performance.as_dict(),
+    }
 
 
 class FlanT5Predictor:
