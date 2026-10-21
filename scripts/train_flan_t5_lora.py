@@ -33,6 +33,7 @@ from clearmed.models.flan_t5_lora import (
 )
 from clearmed.training.flan_t5_lora import (
     FlanT5TrainConfig,
+    resolve_precision,
     run_resumable_training,
     set_seed,
 )
@@ -83,6 +84,22 @@ def _validation_subset(dev: Any, limit: int | None, seed: int) -> Any:
     return subset(dev, limit, seed)
 
 
+def _train_config_from_args(args: argparse.Namespace, device: torch.device) -> FlanT5TrainConfig:
+    """Construct the validated effective training configuration for this device."""
+    return FlanT5TrainConfig(
+        seed=args.seed,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        weight_decay=args.weight_decay,
+        gradient_clip=args.gradient_clip,
+        max_steps=args.max_steps,
+        epochs=args.epochs,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        warmup_steps=args.warmup_steps,
+        precision=resolve_precision(args.precision, device),
+    )
+
+
 def run_training(args: argparse.Namespace) -> dict[str, Any]:
     """Train only from canonical Part I data and save a resumable experiment."""
     complete_train = load_partition(args.train_dir, "part1_train")
@@ -104,7 +121,7 @@ def run_training(args: argparse.Namespace) -> dict[str, Any]:
     set_seed(args.seed)
     lora_config = FlanT5LoraConfig(model_name=args.model_name, rank=args.lora_rank, alpha=args.lora_alpha, dropout=args.lora_dropout, target_modules=tuple(args.lora_target_modules))
     data_config = FlanT5DataConfig(args.max_source_length, args.max_target_length)
-    train_config = FlanT5TrainConfig(seed=args.seed, batch_size=args.batch_size, learning_rate=args.learning_rate, weight_decay=args.weight_decay, gradient_clip=args.gradient_clip, max_steps=args.max_steps, epochs=args.epochs, gradient_accumulation_steps=args.gradient_accumulation_steps, warmup_steps=args.warmup_steps, precision=args.precision)
+    train_config = _train_config_from_args(args, device)
     latest_adapter = checkpoint_dir / "latest" / "adapter"
     if args.resume:
         model, tokenizer = load_saved_adapter(str(latest_adapter), args.model_name, is_trainable=True)
