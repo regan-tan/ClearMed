@@ -64,7 +64,9 @@ Evaluate the saved adapter without retraining:
 uv run python scripts\evaluate_flan_t5_lora.py --checkpoint-dir checkpoints\flan_t5_lora\flan-smoke-v1 --output-dir outputs\flan_t5_lora\flan-smoke-v1\eval-internal-dev --device cpu
 ```
 
-These are implementation smoke checks, not final research results. A real run
-requires a locally cached or downloadable checkpoint; the project still needs a
-documented full GPU fine-tune, held-out protocol, BERTScore, and blind factual
-quality assessment before making RQ1/RQ2 claims.
+These are implementation smoke checks, not final research results. For the
+full GPU workflow, resumable training, selected-best adapter evaluation, Slurm
+template, and cluster troubleshooting, follow
+[the SMU GPU training guide](flan_t5_gpu_training.md). BERTScore and blind
+factual-quality assessment remain evaluation stages rather than claims of
+medical correctness.

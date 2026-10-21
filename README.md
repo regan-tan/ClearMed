@@ -179,8 +179,9 @@ uv sync
 
 Current phase: Step 1 partitions and the TF-IDF MCQ baseline are complete. The
 Scratch Seq2Seq pipeline is implemented and smoke-tested; its full GPU training
-run is pending. FLAN-T5 + LoRA, retrieval experiments, and backend integration
-remain planned research work.
+run is pending. The FLAN-T5 + LoRA pipeline is implemented and prepared for a
+resumable SMU GPU experiment; its full-dataset run remains pending. Retrieval
+experiments and backend integration remain planned research work.
 
 ## Disclaimer
 
