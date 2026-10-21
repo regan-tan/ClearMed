@@ -5,6 +5,13 @@ This is the executable workflow for ClearMed Part I. It prepares a full
 particular GPU. Confirm your own allocation with `myinfo`, run the smoke job,
 then run the short feasibility test before committing to full training.
 
+The completed SMU Origami feasibility run used an RTX 3090 (24 GB), BF16,
+batch size 2, gradient accumulation 4, and 20 optimizer steps. Its active
+training-loop time was 16.179 seconds; teacher-forced validation loss improved
+from 3.3301 to 3.3235, and both `best` and `latest` checkpoints were saved.
+This establishes feasibility for that exact bounded configuration only, not a
+full-training result.
+
 The checked-in Slurm template is [scripts/slurm/flan_t5_lora.sbatch](../scripts/slurm/flan_t5_lora.sbatch).
 It does not contain account, partition, QOS, memory, or wall-time guesses.
 
@@ -112,13 +119,49 @@ base-model budget. This measures memory and throughput on your actual GPU:
 sbatch --partition=<PARTITION> --account=<ACCOUNT> --qos=<QOS> --cpus-per-task=<CPUS> --mem=<MEMORY> --time=<WALLTIME> --export=ALL,CLEARMED_MODE=train,CLEARMED_PROJECT_DIR=$PWD,CLEARMED_RUN_ID=base-feasibility-seed42,CLEARMED_MODEL_NAME=google/flan-t5-base,CLEARMED_BATCH_SIZE=2,CLEARMED_GRADIENT_ACCUMULATION_STEPS=4,CLEARMED_MAX_STEPS=20,CLEARMED_EPOCHS=1,CLEARMED_VALIDATION_QUESTIONS=32,CLEARMED_VALIDATION_INTERVAL_STEPS=10,CLEARMED_CHECKPOINT_INTERVAL_STEPS=10 scripts/slurm/flan_t5_lora.sbatch
 ```
 
-Use the logged `nvidia-smi` memory and the timestamps/step count to choose a
-batch size, accumulation count, and wall-time. Do not infer feasibility from a
+Use `outputs/flan_t5_lora/<run-id>/metrics.json` to choose a batch size,
+accumulation count, and wall-time. It records CUDA peak allocation/reservation
+and synchronized optimizer-step throughput. Do not infer feasibility from a
 different GPU. If base OOMs, lower per-device batch size first while preserving
 effective batch size through gradient accumulation; report the measured limit
 rather than silently switching the research model.
 
-## 5. Full fine-tuning
+## 5. Interpreting performance measurements and running a 200-step benchmark
+
+`metrics.json` preserves the existing experiment metrics and adds
+`training.performance` for the current invocation. Its timing fields are all
+seconds:
+
+- `total_elapsed_seconds` is the synchronized wall-clock time from just before
+  optimizer updates through the final checkpoint save.
+- `optimizer_step_elapsed_seconds` and
+  `optimizer_step_throughput_steps_per_second` cover active training time only;
+  validation and checkpoint work are excluded and reported separately as
+  `validation_elapsed_seconds` and `checkpoint_elapsed_seconds`.
+- `optimizer_steps_this_invocation` is especially useful after resume: it is
+  not the run's cumulative global step count.
+
+`training.performance.gpu_memory` uses **bytes**. Its
+`peak_gpu_memory_allocated_bytes` is memory held by live PyTorch tensors, while
+`peak_gpu_memory_reserved_bytes` includes PyTorch's CUDA caching allocator.
+`total_device_vram_bytes` is the GPU's physical VRAM capacity; neither peak is
+system RAM, and `system_ram_measured` is explicitly `false`. Peaks are reset
+immediately before optimizer updates, after model/optimizer setup, and include
+the persistent CUDA allocation present at that boundary.
+
+The training log also emits a flushed `[flan_t5_lora]` progress line every 25
+optimizer steps and at the bounded run's end. It reports cumulative optimizer
+steps, active elapsed seconds, and synchronized optimizer-step throughput.
+
+After the 20-step feasibility run, use this unique, non-overwriting 200-step
+benchmark to obtain a steadier throughput figure. It remains a resource
+benchmark, not a research result or a replacement for final evaluation:
+
+```bash
+sbatch --partition=<PARTITION> --account=<ACCOUNT> --qos=<QOS> --cpus-per-task=<CPUS> --mem=<MEMORY> --time=<WALLTIME> --export=ALL,CLEARMED_MODE=train,CLEARMED_PROJECT_DIR=$PWD,CLEARMED_RUN_ID=flan-base-benchmark-200-seed42,CLEARMED_MODEL_NAME=google/flan-t5-base,CLEARMED_BATCH_SIZE=2,CLEARMED_GRADIENT_ACCUMULATION_STEPS=4,CLEARMED_MAX_STEPS=200,CLEARMED_EPOCHS=1,CLEARMED_VALIDATION_QUESTIONS=32,CLEARMED_VALIDATION_INTERVAL_STEPS=100,CLEARMED_CHECKPOINT_INTERVAL_STEPS=100 scripts/slurm/flan_t5_lora.sbatch
+```
+
+## 6. Full fine-tuning
 
 After the feasibility result, submit the unique full run. Omit
 `CLEARMED_MAX_STEPS` to use the three-epoch budget, or set it explicitly if
@@ -139,7 +182,7 @@ checkpoints/flan_t5_lora/flan-base-full-seed42/latest/   adapter + optimizer/sch
 outputs/flan_t5_lora/flan-base-full-seed42/              config, history, selection metrics
 ```
 
-## 6. Resume a pre-empted or time-limited run
+## 7. Resume a pre-empted or time-limited run
 
 First ensure the last job wrote a complete `latest/training_state.pt`,
 `latest/training_metadata.json`, and `latest/adapter/`. Resubmit the same run
@@ -157,7 +200,7 @@ bitwise equivalence after a different job/GPU is not guaranteed, but batch order
 and optimizer/scheduler progression are recorded and deterministic for the
 same environment.
 
-## 7. Final full internal-development evaluation
+## 8. Final full internal-development evaluation
 
 After full training, evaluate `best` independently. This is the only stage
 that autoregressively generates the complete `internal_dev` predictions. Add
