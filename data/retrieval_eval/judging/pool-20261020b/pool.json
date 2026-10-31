@@ -1,0 +1,42 @@
+{
+  "corpus_run_id": "20261016-142815",
+  "items": 1084,
+  "items_per_stage_labeller": {
+    "A/labeller_1": 99,
+    "A/labeller_2": 82,
+    "B/labeller_1": 450,
+    "B/labeller_2": 453
+  },
+  "methods": [
+    "minilm",
+    "e5_base_v2",
+    "biolord_2023"
+  ],
+  "passages_sha256": "4cc4bf00f4d36907102044438a9a6e25e35c74c305e5eacfa2ca55bce9958351",
+  "pool_id": "pool-20261020b",
+  "pool_key_sha256": "eba2e87de45c189e6df8bea63ec3be424836545d5e0d66f3462cd62566a189c4",
+  "seed": 42,
+  "shared_items": 314,
+  "sheet_file": "outputs/retrieval/judging/pool-20261020b/labelling_sheet.csv",
+  "sheet_sha256": "b61fab4a7e19d3b84344e29a882ef06523a74531be1e00c42c68278fcb767186",
+  "stages": {
+    "A": {
+      "depth": 1,
+      "queries_file": "data/retrieval_eval/queries_calibration.jsonl",
+      "queries_sha256": "b07cb4bca6653d20c220d6f4a3fbcb08e77027ffb2c6765bcc00a7a262f95c01",
+      "rankings_run_id": "calibration-gold-20261020b",
+      "shared_queries": 0
+    },
+    "B": {
+      "depth": 5,
+      "queries_file": "data/retrieval_eval/queries_eval.jsonl",
+      "queries_sha256": "157bfcd8b4e20ed115afc3a1adc07159b8944b242cb3f1c4dd0854b1a8a8e9c5",
+      "rankings_run_id": "evaluation-gold-20261020b",
+      "shared_queries": 12
+    }
+  },
+  "unique_pairs_per_stage": {
+    "A": 181,
+    "B": 746
+  }
+}

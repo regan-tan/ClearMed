@@ -1,0 +1,6 @@
+{
+  "label_source": "final_labels.jsonl by Joel Foo (commit ad2dd72 on origin/main)",
+  "method": "Pre-filled labels hidden; items labelled independently by ChatGPT, Claude and Gemini; 63 disagreements resolved by further AI check and manual check.",
+  "not_independent_human_labels": true,
+  "source_sha256": "7c09bb3e07f94950416411106b0f343be3a2822d4fc71c5b916fff84b45a0a4d"
+}

@@ -1,0 +1,55 @@
+{
+  "demo_questions": 30,
+  "file_sha256": {
+    "queries_calibration.jsonl": "b07cb4bca6653d20c220d6f4a3fbcb08e77027ffb2c6765bcc00a7a262f95c01",
+    "queries_eval.jsonl": "157bfcd8b4e20ed115afc3a1adc07159b8944b242cb3f1c4dd0854b1a8a8e9c5"
+  },
+  "follow_up_types": {
+    "calibration": {
+      "key_clue": 17,
+      "mechanism": 17,
+      "off_topic": 12,
+      "why_correct": 17,
+      "why_not_option": 17
+    },
+    "evaluation": {
+      "key_clue": 13,
+      "mechanism": 12,
+      "off_topic": 9,
+      "why_correct": 13,
+      "why_not_option": 13
+    }
+  },
+  "internal_dev_fingerprint": "2cadb29706e7718f4bb96b0c3ee1a220e0198f7025e454d743a7d505d5b4d53a",
+  "mcq_filter": "Valid MCQ with four distinct options and no reference to an image, figure or plate.",
+  "query_format": "Follow-up, then 'Answer: <label>. <option text>', then the question and options A-D.",
+  "rq4_queries": 30,
+  "rq4_second_turns": 10,
+  "seed": 42,
+  "sizes": {
+    "calibration": 80,
+    "demo": 30,
+    "evaluation": 60,
+    "rq4": 30,
+    "two_turn": 10
+  },
+  "stage_answer_sources": {
+    "calibration": [
+      "gold",
+      "predicted"
+    ],
+    "demo": [
+      "predicted"
+    ],
+    "rq3": [
+      "gold",
+      "predicted"
+    ],
+    "rq4": [
+      "predicted"
+    ]
+  },
+  "validation_duplicates_excluded": 0,
+  "validation_fingerprint": "d4502e0c9747f835cb1704844db09c232b95c3e82f93d40de342468174ba404a",
+  "validation_rows": 4183
+}

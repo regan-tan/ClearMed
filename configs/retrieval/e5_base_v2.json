@@ -1,0 +1,9 @@
+{
+  "method_id": "e5_base_v2",
+  "model_name": "intfloat/e5-base-v2",
+  "revision": "f52bf8ec8c7124536f0efb74aca902b2995e5bcd",
+  "query_prefix": "query: ",
+  "document_prefix": "passage: ",
+  "max_seq_length": null,
+  "batch_size": 32
+}

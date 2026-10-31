@@ -1,0 +1,16 @@
+{
+  "adjudicated": 0,
+  "cohen_kappa": 1.0,
+  "disagreement_count": 0,
+  "judgments": 927,
+  "pool_id": "pool-20261020b",
+  "raw_agreement": 1.0,
+  "relevant_per_stage": {
+    "A": 45,
+    "B": 50
+  },
+  "shared_items": 157,
+  "shared_queries": 12,
+  "sheet_sha256": "09cbb7ac820b077c4b654dfeec54dcfec94bf0b2d9323d338078845baa6d85f6",
+  "status": "complete"
+}
