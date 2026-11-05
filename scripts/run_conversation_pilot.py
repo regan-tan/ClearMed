@@ -16,7 +16,12 @@ Writes ``outputs/conversation/pilot/<run_id>/``:
 After grading, ``--score`` reads ``pilot_sheet.csv`` and writes
 ``pilot_result.json``. A reply passes if it addresses the follow-up and uses
 at least one fact from the evidence that is not in the MCQ; the pilot passes
-at 6 or more of 10.
+when at least 60% of replies pass (6 of 10).
+
+``--gate-off`` answers every follow-up with its retrieved evidence, so a pilot
+of the reply model is not limited to the follow-ups the gate accepts. Two
+gate-off pilots then see the same follow-ups in the same order, and
+``--compare RUN_A RUN_B`` gives a paired comparison of their graded sheets.
 """
 
 from __future__ import annotations
@@ -24,6 +29,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import re
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
@@ -32,20 +38,30 @@ from pathlib import Path
 from random import Random
 from typing import Any
 
-from clearmed.conversation.pipeline import TutorPipeline, evidence_block, mcq_row
+from clearmed.conversation.pipeline import (
+    GATE_OFF_SUFFIX,
+    TutorPipeline,
+    evidence_block,
+    mcq_row,
+)
+from clearmed.evaluation.retrieval import bootstrap_ci, paired_test
 from clearmed.retrieval.queries import ON_TOPIC_FOLLOW_UPS
 
 QUERIES_PATH = Path("data/retrieval_eval/queries_calibration.jsonl")
 OUTPUT_ROOT = Path("outputs/conversation/pilot")
 SEED = 42
-PASS_MARK = 6
+PASS_RATE = 0.6  # 6 of 10, fixed before the first pilot.
 SHEET_COLUMNS = (
     "query_id", "follow_up_type", "question", "options", "predicted_label", "gold_label",
     "follow_up", "evidence", "reply", "stray_answer_letter",
     "addresses_follow_up", "uses_new_evidence_fact", "notes",
 )
 # Answer-letter prefixes copied from MedMCQA explanations, e.g. "Ans. (c)" or "Answer is B".
-STRAY_ANSWER_LETTER = re.compile(r"\bans(?:wer)?\b\s*(?:is\s*)?[.:\-]?\s*(?:\(\s*[a-d]\s*\)|[a-d]\b)", re.IGNORECASE)
+# A bare lowercase letter counts only before punctuation or "i.e.", so "the answer is a hormone" does not match.
+STRAY_ANSWER_LETTER = re.compile(
+    r"\b(?i:ans(?:wer)?)\b[\s.:\-]*(?:(?i:is)\b[\s.:\-]*)?"
+    r"(?:\(\s*['\"]?[a-dA-D]['\"]?\s*\)|['\"‘’][a-dA-D]['\"‘’]|[A-D]\b|[a-d](?=[.,:;)]|\s*$|\s+i\.?e))"
+)
 
 
 def candidate_order(records: Sequence[Mapping[str, Any]], seed: int = SEED) -> list[Mapping[str, Any]]:
@@ -124,6 +140,7 @@ def run(
     summary = {
         "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "method_id": tutor.method_id,
+        "gate_off": tutor.gate_off,
         "threshold": tutor.gate.threshold if tutor.gate else None,
         "stage": tutor.stage,
         "seed": SEED,
@@ -139,27 +156,58 @@ def run(
     return summary
 
 
-def score(output_dir: Path) -> dict[str, Any]:
-    """Tally a graded ``pilot_sheet.csv`` into ``pilot_result.json``."""
+def _graded_rows(output_dir: Path) -> list[dict[str, str]]:
     with (output_dir / "pilot_sheet.csv").open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     for row in rows:
         for column in ("addresses_follow_up", "uses_new_evidence_fact"):
             if row[column].strip() not in ("0", "1"):
                 raise ValueError(f"{row['query_id']}: {column} must be 0 or 1, got {row[column]!r}.")
-    passed = [r["query_id"] for r in rows if r["addresses_follow_up"].strip() == r["uses_new_evidence_fact"].strip() == "1"]
+    return rows
+
+
+def _passes(row: Mapping[str, str]) -> bool:
+    return row["addresses_follow_up"].strip() == row["uses_new_evidence_fact"].strip() == "1"
+
+
+def score(output_dir: Path) -> dict[str, Any]:
+    """Tally a graded ``pilot_sheet.csv`` into ``pilot_result.json``."""
+    rows = _graded_rows(output_dir)
+    passed = [r["query_id"] for r in rows if _passes(r)]
+    pass_mark = math.ceil(PASS_RATE * len(rows))
     result = {
         "n": len(rows),
         "passed": len(passed),
+        "pass_rate": len(passed) / len(rows) if rows else None,
+        "pass_rate_ci95": list(bootstrap_ci([float(_passes(r)) for r in rows])) if rows else None,
         "passed_ids": passed,
         "addresses_follow_up": sum(r["addresses_follow_up"].strip() == "1" for r in rows),
         "uses_new_evidence_fact": sum(r["uses_new_evidence_fact"].strip() == "1" for r in rows),
         "stray_answer_letter": sum(r["stray_answer_letter"] == "1" for r in rows),
-        "pass_mark": PASS_MARK,
-        "pilot_passed": len(passed) >= PASS_MARK,
+        "pass_mark": pass_mark,
+        "pilot_passed": len(passed) >= pass_mark,
     }
     (output_dir / "pilot_result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
+
+
+def compare(dir_a: Path, dir_b: Path) -> dict[str, Any]:
+    """Paired pass/fail comparison of two graded pilots on the same follow-ups (prints only)."""
+    rows_a = {r["query_id"]: _passes(r) for r in _graded_rows(dir_a)}
+    rows_b = {r["query_id"]: _passes(r) for r in _graded_rows(dir_b)}
+    if set(rows_a) != set(rows_b):
+        raise ValueError("The two pilots graded different follow-ups; compare gate-off pilots of the same size.")
+    ids = sorted(rows_a)
+    return {
+        "a": dir_a.name,
+        "b": dir_b.name,
+        "n": len(ids),
+        "passed_a": sum(rows_a.values()),
+        "passed_b": sum(rows_b.values()),
+        "only_a_passed": sum(rows_a[i] and not rows_b[i] for i in ids),
+        "only_b_passed": sum(rows_b[i] and not rows_a[i] for i in ids),
+        "a_minus_b": paired_test([float(rows_a[i]) for i in ids], [float(rows_b[i]) for i in ids]),
+    }
 
 
 def _real_components(args: argparse.Namespace) -> tuple[TutorPipeline, Callable, dict[str, Any]]:
@@ -185,9 +233,14 @@ def _real_components(args: argparse.Namespace) -> tuple[TutorPipeline, Callable,
         DenseIndex.load(Path("outputs/retrieval") / args.method_id / args.index_run),
         passages,
     )
-    generator = FlanT5Generator(model, tokenizer, max_input_tokens=data_config.max_source_length, device=device)
+    generator = FlanT5Generator(model, tokenizer, max_input_tokens=data_config.max_source_length, device=device,
+                                no_repeat_ngram_size=args.no_repeat_ngram_size, banned_phrases=args.ban_phrase,
+                                use_adapter=not args.reply_without_adapter)
     tutor = TutorPipeline(generator, stage="calibration", retriever=retriever,
-                          gate=Gate.load(args.method_id), method_id=args.method_id)
+                          gate=None if args.gate_off else Gate.load(args.method_id),
+                          method_id=f"{args.method_id}{GATE_OFF_SUFFIX}" if args.gate_off else args.method_id,
+                          gate_off=args.gate_off,
+                          clean_evidence=args.clean_evidence, state_answer=args.state_answer)
     predictor = FlanT5Predictor(model, tokenizer, data_config, device)
 
     def predict(rows: list[dict[str, Any]]) -> list[str | None]:
@@ -200,13 +253,16 @@ def _real_components(args: argparse.Namespace) -> tuple[TutorPipeline, Callable,
         "index_run": args.index_run,
         "corpus_run": Path(args.corpus_run).as_posix(),
         "queries": QUERIES_PATH.as_posix(),
+        "clean_evidence": args.clean_evidence,
+        "state_answer": args.state_answer,
+        "generation": generator.settings,
     }
     return tutor, predict, metadata
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--run-id")
     parser.add_argument("--score", action="store_true", help="Tally a graded pilot_sheet.csv.")
     parser.add_argument("--adapter-dir", type=Path)
     parser.add_argument("--method-id", default="minilm")
@@ -214,7 +270,24 @@ def main() -> None:
     parser.add_argument("--corpus-run", type=Path, default=Path("outputs/retrieval/corpus/20261016-142815"))
     parser.add_argument("--n", type=int, default=10)
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--clean-evidence", action="store_true",
+                        help="Strip answer-letter prefixes (e.g. \"Ans. is 'a' i.e.\") from passages in the prompt.")
+    parser.add_argument("--state-answer", action="store_true",
+                        help="Add a \"Tutor's answer: X. <option>\" line (the predicted answer) to the prompt.")
+    parser.add_argument("--no-repeat-ngram-size", type=int, help="Forbid repeating any n-gram of this size.")
+    parser.add_argument("--ban-phrase", action="append", default=[], help="Text the reply may not contain.")
+    parser.add_argument("--reply-without-adapter", action="store_true",
+                        help="Write replies with plain FLAN-T5 (LoRA off); the MCQ answer still uses the adapter.")
+    parser.add_argument("--gate-off", action="store_true",
+                        help="Answer every follow-up with its retrieved evidence (no confidence gate).")
+    parser.add_argument("--compare", nargs=2, metavar=("RUN_A", "RUN_B"),
+                        help="Paired comparison of two graded pilots; prints only.")
     args = parser.parse_args()
+    if args.compare:
+        print(json.dumps(compare(OUTPUT_ROOT / args.compare[0], OUTPUT_ROOT / args.compare[1]), indent=2))
+        return
+    if args.run_id is None:
+        parser.error("--run-id is required unless --compare is given.")
     output_dir = OUTPUT_ROOT / args.run_id
     if args.score:
         print(json.dumps(score(output_dir), indent=2))

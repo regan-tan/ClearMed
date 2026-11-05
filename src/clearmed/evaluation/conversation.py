@@ -27,11 +27,15 @@ TABLE_CRITERIA = ("correct", "no_unsupported_claims", "grounded", "consistent")
 def reply_scores(
     key: Iterable[Mapping[str, Any]], scores: Mapping[str, Mapping[str, int]]
 ) -> dict[ReplyKey, dict[str, float]]:
-    """Per reply and criterion, the mean over the labellers who scored it."""
+    """Per reply and criterion, the mean over the labellers who scored it.
+
+    A shared item (identical reply from several systems) counts for each of them.
+    """
     collected: dict[ReplyKey, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
     for entry in key:
         for criterion, value in scores.get(entry["item_id"], {}).items():
-            collected[(entry["system"], entry["query_id"], int(entry["turn"]))][criterion].append(value)
+            for system in entry.get("systems", [entry["system"]]):
+                collected[(system, entry["query_id"], int(entry["turn"]))][criterion].append(value)
     return {
         reply: {criterion: sum(values) / len(values) for criterion, values in by_criterion.items()}
         for reply, by_criterion in collected.items()
@@ -120,15 +124,19 @@ def answered_by_all(turns_by_system: Mapping[str, Iterable[Mapping[str, Any]]]) 
 
 
 def pairwise(
-    replies: Mapping[ReplyKey, Mapping[str, float]], systems: Sequence[str], common: set[tuple[str, int]]
+    replies: Mapping[ReplyKey, Mapping[str, float]], systems: Sequence[str], common: set[tuple[str, int]] | None = None
 ) -> dict[str, dict[str, Any]]:
-    """Paired tests between systems on the replies all of them gave."""
+    """Paired tests between systems, each pair on the turns both of them answered.
+
+    ``common`` restricts every pair to the same turns (e.g. those all systems answered).
+    """
     results: dict[str, dict[str, Any]] = {}
+    turns = common if common is not None else {(query_id, turn) for _, query_id, turn in replies}
     for a, b in combinations(systems, 2):
         results[f"{a}_vs_{b}"] = {}
         for criterion in ("correct", "no_unsupported_claims", "grounded"):
             items = sorted(
-                item for item in common
+                item for item in turns
                 if criterion in replies.get((a, *item), {}) and criterion in replies.get((b, *item), {})
             )
             if not items:
@@ -173,4 +181,41 @@ def all_kappas(key: Sequence[Mapping[str, Any]], scores: Mapping[str, Mapping[st
     return {
         criterion: kappa([e for e in key if e["sheet"] == sheet], scores, criterion)
         for sheet, criteria in CRITERIA.items() for criterion in criteria
+    }
+
+
+def gate_tradeoff(
+    gate_off_turns: Iterable[Mapping[str, Any]],
+    replies: Mapping[ReplyKey, Mapping[str, float]],
+    *,
+    system: str,
+    frozen_threshold: float,
+    criteria: Sequence[str] = ("correct", "no_unsupported_claims", "grounded"),
+) -> dict[str, Any]:
+    """Coverage vs reply quality for every possible gate threshold (descriptive, post hoc).
+
+    Uses first turns only: there a gated system that accepts gives exactly its
+    gate-off twin's reply, so any threshold can be simulated from the graded
+    gate-off replies. Each point accepts the turns whose top-1 score is at least
+    the threshold and averages their scores; refused turns are fallbacks.
+    """
+    turns = [t for t in gate_off_turns if int(t["turn"]) == 1 and t["top1_score"] is not None]
+    if not turns:
+        raise ValueError(f"No first turns with a top-1 score for {system!r}.")
+    scored = sorted(((float(t["top1_score"]), replies.get((system, t["query_id"], 1), {})) for t in turns),
+                    key=lambda item: -item[0])
+
+    def point(threshold: float) -> dict[str, Any]:
+        accepted = [scores for score, scores in scored if score >= threshold]
+        means = {}
+        for criterion in criteria:
+            values = [scores[criterion] for scores in accepted if criterion in scores]
+            means[criterion] = sum(values) / len(values) if values else None
+        return {"threshold": threshold, "accepted": len(accepted), "coverage": len(accepted) / len(scored), **means}
+
+    return {
+        "system": system,
+        "n_turns": len(scored),
+        "frozen": point(frozen_threshold),
+        "curve": [point(threshold) for threshold in sorted({score for score, _ in scored}, reverse=True)],
     }

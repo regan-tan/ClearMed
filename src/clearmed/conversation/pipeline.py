@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -35,6 +36,8 @@ FALLBACK_MESSAGE = (
 MAX_PASSAGES = 3
 RETRIEVE_K = 5
 NO_RETRIEVAL = "no_retrieval"
+# A retrieval system run without its confidence gate (always answers from its top passages).
+GATE_OFF_SUFFIX = "_gate_off"
 
 
 class Generator(Protocol):
@@ -98,6 +101,22 @@ def _trim_to_tokens(text: str, budget: int, count_tokens: Callable[[str], int]) 
     return " ".join(words[:low])
 
 
+# MedMCQA explanations often open with the letter of an option the student never
+# sees: "Ans. is 'a' i.e., X", "Ans. (c) X", "A i.e. X", "C. X" or "Ans. X".
+_LETTER_PREFIX = re.compile(
+    r"(Explanation:\s*)(?:(?i:ans(?:wer)?)\b[\s.:\-]*(?:(?i:is)\b[\s.:\-]*)?)?"
+    r"(?:\(\s*['\"‘’*]?[a-dA-D]['\"‘’]?\s*\)|['\"‘’*][a-dA-D]['\"‘’]"
+    r"|[a-dA-D](?=\s*(?:i\.?\s*e\b|[.:)\-])))"
+    r"\s*(?:i\.?\s*e\.?\s*,?|[.:)\-])?\s*"
+)
+_ANS_PREFIX = re.compile(r"(Explanation:\s*)(?i:ans)\b[\s.:\-]*")
+
+
+def strip_answer_prefixes(text: str) -> str:
+    """Remove a leading answer-letter prefix from a passage's explanation."""
+    return _ANS_PREFIX.sub(r"\1", _LETTER_PREFIX.sub(r"\1", text, count=1), count=1)
+
+
 def build_prompt(
     record: Mapping[str, Any],
     follow_up: str,
@@ -106,14 +125,23 @@ def build_prompt(
     count_tokens: Callable[[str], int],
     max_tokens: int,
     previous_turn: tuple[str, str] | None = None,
+    clean_evidence: bool = False,
+    stated_answer: str | None = None,
 ) -> Prompt:
     """Part I input, then numbered evidence, the previous turn and the follow-up.
 
     Passages fill the token budget left after the fixed parts, best first; the
     one that overflows is cut at a word boundary and later ones are dropped.
-    The MCQ and the follow-up are never cut.
+    The MCQ and the follow-up are never cut. ``clean_evidence`` strips
+    answer-letter prefixes from the passages shown to the generator (the
+    retrieval index is unchanged). ``stated_answer`` (a predicted label, never
+    the gold one) adds a ``Tutor's answer: X. <option>`` line after the MCQ.
     """
     head = format_generation_input(mcq_row(record))
+    if stated_answer is not None:
+        if stated_answer not in OPTION_LABELS:
+            raise ValueError(f"Stated answer must be one of {OPTION_LABELS}, got {stated_answer!r}.")
+        head += f"\n\nTutor's answer: {stated_answer}. {record['options'][stated_answer]}"
     tail = ""
     if previous_turn is not None:
         tail += f"Previous turn:\nStudent: {previous_turn[0]}\nTutor: {previous_turn[1]}\n\n"
@@ -132,6 +160,8 @@ def build_prompt(
     trimmed = 0
     for passage in list(passages)[:MAX_PASSAGES]:
         full = " ".join(str(passage["text"]).split())
+        if clean_evidence:
+            full = strip_answer_prefixes(full)
         if count_tokens(render([*kept, full])) <= max_tokens:
             kept.append(full)
             ids.append(str(passage["doc_id"]))
@@ -170,8 +200,16 @@ class TutorPipeline:
         retriever: Retriever | None = None,
         gate: Gate | None = None,
         method_id: str = NO_RETRIEVAL,
+        clean_evidence: bool = False,
+        state_answer: bool = False,
+        gate_off: bool = False,
     ) -> None:
-        if (retriever is None) != (gate is None):
+        if gate_off:
+            if retriever is None or gate is not None:
+                raise ValueError("gate_off needs a retriever and no gate.")
+            if not method_id.endswith(GATE_OFF_SUFFIX):
+                raise ValueError(f"A gate-off pipeline's method_id must end with {GATE_OFF_SUFFIX!r}.")
+        elif (retriever is None) != (gate is None):
             raise ValueError("A retriever needs a gate and a gate needs a retriever.")
         if retriever is None and method_id != NO_RETRIEVAL:
             raise ValueError(f"No-retrieval mode must use method_id {NO_RETRIEVAL!r}.")
@@ -180,6 +218,8 @@ class TutorPipeline:
         self.generator, self.stage, self.retriever, self.gate, self.method_id = (
             generator, stage, retriever, gate, method_id,
         )
+        self.gate_off = gate_off
+        self.clean_evidence, self.state_answer = clean_evidence, state_answer
 
     def respond(
         self,
@@ -205,29 +245,33 @@ class TutorPipeline:
             "top1_score": None,
             "threshold": None,
             "gate_accepted": None,
+            "clean_evidence": self.clean_evidence,
+            "state_answer": self.state_answer,
         }
         passages: list[dict[str, Any]] = []
-        if self.retriever is not None and self.gate is not None:
+        if self.retriever is not None:
             query = query_text_for(
                 {**record, "follow_up": follow_up},
                 stage=self.stage, answer_source="predicted", predicted_label=predicted_label,
             )
             hits = self.retriever.retrieve(query, RETRIEVE_K)
             top1 = hits[0]["score"] if hits else float("-inf")
-            accepted = bool(hits) and self.gate.accept(top1)
+            accepted = bool(hits) and (self.gate_off or (self.gate is not None and self.gate.accept(top1)))
             log.update(
                 query_text=query,
                 retrieved=[{"doc_id": h["doc_id"], "rank": h["rank"], "score": h["score"]} for h in hits],
                 top1_score=top1 if hits else None,
-                threshold=self.gate.threshold,
+                threshold=self.gate.threshold if self.gate is not None else None,
                 gate_accepted=accepted,
+                gate_off=self.gate_off,
             )
             if not accepted:
                 return {**log, "fallback": True, "passage_ids": [], "passages_trimmed": 0,
                         "prompt": None, "reply": FALLBACK_MESSAGE}
             passages = hits[:MAX_PASSAGES]
         prompt = build_prompt(
-            record, follow_up, passages, previous_turn=previous_turn,
+            record, follow_up, passages, previous_turn=previous_turn, clean_evidence=self.clean_evidence,
+            stated_answer=predicted_label if self.state_answer else None,
             count_tokens=self.generator.count_tokens, max_tokens=self.generator.max_input_tokens,
         )
         reply = self.generator.generate(prompt.text, answer_label=predicted_label)
@@ -272,12 +316,31 @@ class FlanT5Generator:
 
     T5's tokenizer turns the target newline into a space, so the pre-fill is
     the same token sequence Part I trained on (``Answer: X\\nExplanation: ...``).
+    ``no_repeat_ngram_size`` stops decoding loops; ``banned_phrases`` are token
+    sequences the reply may not contain (e.g. ``"Ans"``, the MedMCQA
+    answer-letter opener). Both default off, i.e. plain greedy decoding.
+    ``use_adapter=False`` writes replies with the LoRA adapter switched off,
+    i.e. the plain pretrained FLAN-T5 the adapter was trained on.
     """
 
     def __init__(self, model: Any, tokenizer: Any, *, max_input_tokens: int, device: Any,
-                 max_new_tokens: int = 128) -> None:
+                 max_new_tokens: int = 128, no_repeat_ngram_size: int | None = None,
+                 banned_phrases: Sequence[str] = (), use_adapter: bool = True) -> None:
+        if not use_adapter and not hasattr(model, "disable_adapter"):
+            raise ValueError("use_adapter=False needs a PEFT model with disable_adapter().")
         self.model, self.tokenizer, self.device = model, tokenizer, device
         self._max, self.max_new_tokens = max_input_tokens, max_new_tokens
+        self.use_adapter = use_adapter
+        self.no_repeat_ngram_size = no_repeat_ngram_size
+        self.banned_phrases = tuple(banned_phrases)
+        self._bad_words_ids = [
+            tokenizer(phrase, add_special_tokens=False)["input_ids"] for phrase in self.banned_phrases
+        ]
+
+    @property
+    def settings(self) -> dict[str, Any]:
+        return {"decoding": "greedy", "use_adapter": self.use_adapter, "max_new_tokens": self.max_new_tokens,
+                "no_repeat_ngram_size": self.no_repeat_ngram_size, "banned_phrases": list(self.banned_phrases)}
 
     @property
     def max_input_tokens(self) -> int:
@@ -298,12 +361,15 @@ class FlanT5Generator:
         start = self.model.config.decoder_start_token_id
         decoder_input_ids = torch.tensor([[start, *prefill_ids]])
         self.model.eval()
-        with torch.inference_mode():
+        adapter = nullcontext() if self.use_adapter else self.model.disable_adapter()
+        with torch.inference_mode(), adapter:
             output = self.model.generate(
                 input_ids=inputs["input_ids"].to(self.device),
                 attention_mask=inputs["attention_mask"].to(self.device),
                 decoder_input_ids=decoder_input_ids.to(self.device),
                 do_sample=False, max_new_tokens=self.max_new_tokens,
+                **({"no_repeat_ngram_size": self.no_repeat_ngram_size} if self.no_repeat_ngram_size else {}),
+                **({"bad_words_ids": self._bad_words_ids} if self._bad_words_ids else {}),
             )[0]
         continuation = output[decoder_input_ids.shape[1]:].detach().cpu().tolist()
         explanation = self.tokenizer.decode(continuation, skip_special_tokens=True).strip()

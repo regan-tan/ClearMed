@@ -57,15 +57,18 @@ class Retriever:
         number = int(query_text.splitlines()[0].removeprefix("Follow-up: Why ").rstrip("?")) \
             if "Why " in query_text.splitlines()[0] else 0
         score = 0.1 if number == 4 else 0.9
-        return [{"rank": r, "doc_id": f"{self.method}-q{number}-d{r}", "score": score, "text": f"evidence {r}"}
-                for r in range(1, k + 1)]
+        return [{"rank": r, "doc_id": f"{self.method}-q{number}-d{r}", "score": score,
+                 "text": f"{self.method.upper()} evidence {r}"} for r in range(1, k + 1)]
 
 
-def tutors(stage="rq4"):
+def tutors(stage="rq4", gate_off=False):
     built = {NO_RETRIEVAL: TutorPipeline(StubGenerator(), stage=stage)}
     for method in METHODS:
         built[method] = TutorPipeline(StubGenerator(), stage=stage, retriever=Retriever(method),
                                       gate=Gate(method, 0.5), method_id=method)
+        if gate_off:
+            built[f"{method}_gate_off"] = TutorPipeline(StubGenerator(), stage=stage, retriever=Retriever(method),
+                                                        gate_off=True, method_id=f"{method}_gate_off")
     return built
 
 
@@ -124,7 +127,7 @@ def test_full_rq4_flow(tmp_path):
         assert name not in blind
     assert "Reference text." in blind and "(none in dataset)" in blind
     grounding = (rubric / "grounding_sheet.csv").read_text("utf-8")
-    assert "[1] evidence 1" in grounding
+    assert "[1] MINILM evidence 1" in grounding
     with pytest.raises(FileExistsError):
         EXPORT.run(run_dir=run_dir, records=records_by_id, explanations={})
 
@@ -182,10 +185,23 @@ def test_assignment_shares_twenty_percent_and_splits_the_rest():
 
 
 def test_gradable_replies_skip_fallbacks_and_control_for_grounding():
-    turns = {NO_RETRIEVAL: [{"query_id": "q", "turn": 1, "fallback": False}],
-             "minilm": [{"query_id": "q", "turn": 1, "fallback": True}, {"query_id": "r", "turn": 1, "fallback": False}]}
+    turns = {NO_RETRIEVAL: [{"query_id": "q", "turn": 1, "fallback": False, "prompt": "p0", "reply": "x"}],
+             "minilm": [{"query_id": "q", "turn": 1, "fallback": True, "prompt": None, "reply": "fallback"},
+                        {"query_id": "r", "turn": 1, "fallback": False, "prompt": "p1", "reply": "y"}]}
     assert len(gradable_replies(turns, "blind")) == 2
-    assert gradable_replies(turns, "grounding") == [{"system": "minilm", "query_id": "r", "turn": 1}]
+    assert gradable_replies(turns, "grounding") == [
+        {"system": "minilm", "systems": ["minilm"], "query_id": "r", "turn": 1}]
+
+
+def test_identical_replies_from_gated_and_gate_off_systems_are_graded_once():
+    same = {"query_id": "q", "turn": 1, "fallback": False, "prompt": "p", "reply": "y"}
+    turns = {"minilm": [same], "minilm_gate_off": [same],
+             "e5_base_v2_gate_off": [{**same, "prompt": "other evidence"}]}
+    items = gradable_replies(turns, "grounding")
+    assert sorted(len(i["systems"]) for i in items) == [1, 2]
+    key = [{"item_id": "G-1", "labeller": "labeller_1", "shared": False, "sheet": "grounding", **items[0]}]
+    scores = reply_scores(key, {"G-1": {"grounded": 2}})
+    assert set(scores) == {(system, "q", 1) for system in items[0]["systems"]}
 
 
 def test_read_scores_rejects_bad_sheets():
@@ -230,3 +246,70 @@ def test_second_turn_fallbacks_are_unjudged():
                         {"query_id": "q", "turn": 1, "fallback": True}]}
     assert classify_fallbacks(turns, {"q": {"d"}})["minilm"] == {
         "replies": 2, "fallbacks": 2, "correct": 0, "unnecessary": 1, "unjudged": 1}
+
+
+def test_gate_off_systems_always_answer_and_share_items_with_their_gated_twin(tmp_path):
+    run_dir = tmp_path / "eval" / "rq4-gate-off"
+    summary = RUN.run(records=records(), tutors=tutors(gate_off=True), predict=predict, output_dir=run_dir)
+    assert summary["systems"]["minilm_gate_off"] == {"threshold": None, "gate_off": True, "turns": 6, "fallbacks": 0}
+    assert summary["systems"]["minilm"]["fallbacks"] == 1
+    records_by_id = {r["query_id"]: r for r in records() if r["rq4"]}
+    exported = EXPORT.run(run_dir=run_dir, records=records_by_id, explanations={})
+    # No retrieval 6 + three gate-off systems x 6; every accepted gated reply equals its gate-off twin.
+    assert exported["blind"]["replies"] == 24 and exported["grounding"]["replies"] == 18
+    labels_dir = tmp_path / "labels"
+    labels_dir.mkdir()
+    for sheet in ("blind", "grounding"):
+        text = (run_dir / "rubric" / f"{sheet}_sheet.csv").read_text("utf-8")
+        (labels_dir / f"{sheet}_sheet.csv").write_text(fill(text, sheet, lambda row: "1"), "utf-8")
+    write_pool(tmp_path)
+    metrics = EVALUATE.run(run_dir=run_dir, labels_dir=labels_dir, pool_id="pool-1", judging_root=tmp_path / "judging")
+    assert metrics["all_replies"]["minilm"]["correct"]["n"] == 5
+    assert metrics["all_replies"]["minilm_gate_off"]["correct"]["n"] == 6
+    assert metrics["always_answering"]["systems"] == [NO_RETRIEVAL, *(f"{m}_gate_off" for m in METHODS)]
+    assert metrics["always_answering"]["n_turns"] == 6
+    assert "MiniLM (gate off)" in (run_dir / "rq4_table.md").read_text("utf-8")
+
+
+def test_gate_off_pipeline_validation():
+    with pytest.raises(ValueError, match="gate_off needs a retriever"):
+        TutorPipeline(StubGenerator(), stage="rq4", gate_off=True, method_id="minilm_gate_off")
+    with pytest.raises(ValueError, match="must end with"):
+        TutorPipeline(StubGenerator(), stage="rq4", retriever=Retriever("minilm"), gate_off=True, method_id="minilm")
+    result = TutorPipeline(StubGenerator(), stage="rq4", retriever=Retriever("minilm"), gate_off=True,
+                           method_id="minilm_gate_off").respond(records()[4], predicted_label="B")
+    assert not result["fallback"] and result["top1_score"] == 0.1 and result["threshold"] is None
+
+
+def test_gate_tradeoff_simulates_thresholds_from_gate_off_replies():
+    from clearmed.evaluation.conversation import gate_tradeoff
+
+    turns = [{"query_id": q, "turn": 1, "top1_score": s} for q, s in (("a", 0.9), ("b", 0.7), ("c", 0.5))]
+    turns.append({"query_id": "a", "turn": 2, "top1_score": 0.99})
+    replies = {("m_gate_off", "a", 1): {"correct": 2, "grounded": 2}, ("m_gate_off", "b", 1): {"correct": 0},
+               ("m_gate_off", "c", 1): {"correct": 1, "grounded": 0}}
+    result = gate_tradeoff(turns, replies, system="m_gate_off", frozen_threshold=0.8)
+    assert result["n_turns"] == 3 and result["frozen"]["accepted"] == 1 and result["frozen"]["correct"] == 2
+    assert [p["accepted"] for p in result["curve"]] == [1, 2, 3]
+    assert result["curve"][-1]["correct"] == 1.0 and result["curve"][-1]["grounded"] == 1.0
+    with pytest.raises(ValueError, match="No first turns"):
+        gate_tradeoff([], replies, system="m_gate_off", frozen_threshold=0.5)
+
+
+def test_gate_tradeoff_script_on_the_synthetic_run(tmp_path):
+    analyze = load_script("analyze_gate_tradeoff")
+    run_dir = tmp_path / "eval" / "rq4-gate-off"
+    RUN.run(records=records(), tutors=tutors(gate_off=True), predict=predict, output_dir=run_dir)
+    EXPORT.run(run_dir=run_dir, records={r["query_id"]: r for r in records() if r["rq4"]}, explanations={})
+    labels_dir = tmp_path / "labels"
+    labels_dir.mkdir()
+    for sheet in ("blind", "grounding"):
+        text = (run_dir / "rubric" / f"{sheet}_sheet.csv").read_text("utf-8")
+        (labels_dir / f"{sheet}_sheet.csv").write_text(fill(text, sheet, lambda row: "2"), "utf-8")
+    thresholds = tmp_path / "gate_thresholds.json"
+    thresholds.write_text(json.dumps({"thresholds": {m: {"threshold": 0.5} for m in METHODS}}), "utf-8")
+    result = analyze.run(run_dir=run_dir, labels_dir=labels_dir, thresholds_path=thresholds)
+    minilm = result["methods"]["minilm"]
+    # Four first turns: three score 0.9 (accepted at 0.5), one scores 0.1 (refused).
+    assert minilm["n_turns"] == 4 and minilm["frozen"]["accepted"] == 3 and minilm["curve"][-1]["accepted"] == 4
+    assert "| MiniLM | frozen | 3/4 |" in (run_dir / "gate_tradeoff.md").read_text("utf-8")

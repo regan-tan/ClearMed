@@ -1,0 +1,12 @@
+{
+  "run_id": "rq4-20261104",
+  "graded_on": "2026-11-04",
+  "grader": "Claude (Anthropic), at the user's request, for both labeller_1 and labeller_2",
+  "method": "Graded from the sheet contents only (rubric/key.jsonl not consulted); each distinct reply graded once and the same scores copied to every row showing it, so the two labeller copies are identical",
+  "rules": "docs/rq4_grading_guide.md; plus: a wrong 'Answer: X' line counts as one unsupported claim (no_unsupported_claims <= 1); empty or question-restating replies score correct 0",
+  "caveats": [
+    "Not independent human grades; kappa between labeller_1 and labeller_2 is meaningless (identical by construction)",
+    "The grader is the same AI that built the tutor pipeline",
+    "Not reviewed by a human yet"
+  ]
+}

@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from clearmed.conversation.pipeline import GATE_OFF_SUFFIX, NO_RETRIEVAL
 from clearmed.conversation.rubric import SHEETS, read_scores
 from clearmed.evaluation.conversation import (
     TABLE_CRITERIA,
@@ -36,6 +37,7 @@ from clearmed.retrieval.runs import JUDGING_ROOT, load_judged_pool
 EVAL_ROOT = Path("outputs/conversation/eval")
 LABELS_ROOT = Path("data/retrieval_eval/rq4")
 NAMES = {"no_retrieval": "No retrieval", "minilm": "MiniLM", "e5_base_v2": "E5-base-v2", "biolord_2023": "BioLORD-2023"}
+NAMES |= {f"{m}{GATE_OFF_SUFFIX}": f"{name} (gate off)" for m, name in list(NAMES.items())[1:]}
 HEADERS = {"correct": "Correct", "no_unsupported_claims": "No unsupported claims", "grounded": "Grounded",
            "consistent": "Consistent"}
 
@@ -52,7 +54,7 @@ def _table(title: str, table: dict[str, Any], fallbacks: dict[str, Any]) -> str:
              "|" + "---|" * (len(HEADERS) + 2)]
     for system, row in table.items():
         f = fallbacks[system]
-        fallback = "N/A" if system == "no_retrieval" else f"{f['fallbacks']} ({f['correct']} / {f['unnecessary']})"
+        fallback = "N/A" if system == NO_RETRIEVAL or system.endswith(GATE_OFF_SUFFIX) else f"{f['fallbacks']} ({f['correct']} / {f['unnecessary']})"
         lines.append(f"| {NAMES.get(system, system)} | " + " | ".join(_cell(row[c]) for c in TABLE_CRITERIA)
                      + f" | {fallback} |")
     return "\n".join(lines) + "\n"
@@ -64,7 +66,7 @@ def run(
     if (run_dir / "metrics.json").exists():
         raise FileExistsError(f"{run_dir / 'metrics.json'} exists; RQ4 metrics are written once per run.")
     config = json.loads((run_dir / "config.json").read_text("utf-8"))
-    systems = list(config["systems"])
+    systems = list(config.get("system_order", config["systems"]))
     turns_by_system = {
         system: [json.loads(line) for line in (run_dir / system / "predictions.jsonl").read_text("utf-8").splitlines()
                  if line.strip()]
@@ -80,6 +82,10 @@ def run(
     relevant = relevant_sets(j for j in judgments if j["stage"] == "B")
     replies = reply_scores(key, scores)
     common = answered_by_all(turns_by_system)
+    # The systems that always answer: no retrieval and every gate-off system. Comparing them on the same
+    # turns isolates what the evidence itself adds, without the gate deciding which turns count.
+    ungated = [s for s in systems if s == NO_RETRIEVAL or s.endswith(GATE_OFF_SUFFIX)]
+    ungated_common = answered_by_all({s: turns_by_system[s] for s in ungated}) if len(ungated) > 1 else set()
     fallbacks = classify_fallbacks(turns_by_system, relevant)
     summary = {
         "run_id": run_dir.name,
@@ -91,13 +97,18 @@ def run(
         "answered_by_all": {"n_turns": len(common), "table": system_table(replies, systems, only=common)},
         "fallbacks": fallbacks,
         "kappa": all_kappas(key, scores),
-        "pairwise_answered_by_all": pairwise(replies, systems, common),
+        "always_answering": {"systems": ungated, "n_turns": len(ungated_common),
+                             "table": system_table(replies, ungated, only=ungated_common),
+                             "pairwise": pairwise(replies, ungated, ungated_common)} if len(ungated) > 1 else None,
+        "pairwise_answered_by_both": pairwise(replies, systems),
         "retrieval_vs_reply": retrieval_vs_reply(turns_by_system, replies, relevant),
     }
     (run_dir / "metrics.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     table = "\n".join([
         _table("All replies", summary["all_replies"], fallbacks),
         _table(f"Turns every system answered ({len(common)})", summary["answered_by_all"]["table"], fallbacks),
+        *([_table(f"Always-answering systems on the same turns ({len(ungated_common)})",
+                  summary["always_answering"]["table"], fallbacks)] if summary["always_answering"] else []),
         "Means are 0-2 with 95% bootstrap CIs; fallbacks are excluded from the means and counted separately.",
     ])
     (run_dir / "rq4_table.md").write_text(table + "\n", encoding="utf-8")

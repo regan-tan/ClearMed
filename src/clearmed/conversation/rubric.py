@@ -41,18 +41,29 @@ COLUMNS = {
 
 
 def gradable_replies(turns_by_system: Mapping[str, Iterable[Mapping[str, Any]]], sheet: str) -> list[dict[str, Any]]:
-    """Non-fallback replies for one sheet; grounding leaves out the no-retrieval control."""
+    """Non-fallback replies for one sheet; grounding leaves out the no-retrieval control.
+
+    Systems that produced the very same prompt and reply for a turn (a gated
+    system that accepted its evidence and its gate-off twin) share one item:
+    ``system`` names the first of them and ``systems`` lists all, so the reply
+    is scored once and the score counts for each.
+    """
     if sheet not in SHEETS:
         raise ValueError(f"Unknown sheet {sheet!r}; expected one of {SHEETS}.")
-    replies = []
+    replies: dict[tuple[str, int, str, str], dict[str, Any]] = {}
     for system, turns in sorted(turns_by_system.items()):
         if sheet == "grounding" and system == NO_RETRIEVAL:
             continue
-        replies += [
-            {"system": system, "query_id": t["query_id"], "turn": int(t["turn"])}
-            for t in turns if not t["fallback"]
-        ]
-    return replies
+        for t in turns:
+            if t["fallback"]:
+                continue
+            identity = (t["query_id"], int(t["turn"]), t["prompt"], t["reply"])
+            if identity in replies:
+                replies[identity]["systems"].append(system)
+            else:
+                replies[identity] = {"system": system, "systems": [system], "query_id": t["query_id"],
+                                     "turn": int(t["turn"])}
+    return list(replies.values())
 
 
 def assign_labellers(

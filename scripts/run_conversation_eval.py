@@ -22,12 +22,18 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from clearmed.conversation.pipeline import NO_RETRIEVAL, TutorPipeline, mcq_row
+from clearmed.conversation.pipeline import (
+    GATE_OFF_SUFFIX,
+    NO_RETRIEVAL,
+    TutorPipeline,
+    mcq_row,
+)
 from clearmed.retrieval.embedders import METHOD_IDS
 
 QUERIES_PATH = Path("data/retrieval_eval/queries_eval.jsonl")
 OUTPUT_ROOT = Path("outputs/conversation/eval")
 SYSTEMS = (NO_RETRIEVAL, *METHOD_IDS)
+GATE_OFF_SYSTEMS = tuple(f"{m}{GATE_OFF_SUFFIX}" for m in METHOD_IDS)
 
 
 def run(
@@ -40,8 +46,9 @@ def run(
 ) -> dict[str, Any]:
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"{output_dir} is not empty; choose a new --run-id.")
-    if set(tutors) != set(SYSTEMS):
-        raise ValueError(f"Expected tutors for {SYSTEMS}, got {sorted(tutors)}.")
+    if set(tutors) not in (set(SYSTEMS), set(SYSTEMS) | set(GATE_OFF_SYSTEMS)):
+        raise ValueError(f"Expected tutors for {SYSTEMS} (plus optionally {GATE_OFF_SYSTEMS}), got {sorted(tutors)}.")
+    systems = [s for s in (*SYSTEMS, *GATE_OFF_SYSTEMS) if s in tutors]
     if any(tutor.stage != "rq4" for tutor in tutors.values()):
         raise ValueError("RQ4 tutors must run at stage 'rq4' (predicted answers only).")
     rq4 = [record for record in records if record.get("rq4")]
@@ -56,7 +63,7 @@ def run(
             for record, label in usable
             for turn in tutors[system].converse(record, predicted_label=label)
         ]
-        for system in SYSTEMS
+        for system in systems
     }
 
     output_dir.mkdir(parents=True)
@@ -79,9 +86,11 @@ def run(
         "n_second_turns": sum(bool(r.get("second_turn")) for r in rq4),
         "malformed_predictions": len(rq4) - len(usable),
         "predicted_correct": sum(label == r["gold_label"] for r, label in usable),
+        "system_order": systems,
         "systems": {
             system: {
                 "threshold": tutors[system].gate.threshold if tutors[system].gate else None,
+                "gate_off": tutors[system].gate_off,
                 "turns": len(turns),
                 "fallbacks": sum(t["fallback"] for t in turns),
             }
@@ -120,9 +129,12 @@ def _real_components(args: argparse.Namespace) -> tuple[dict[str, TutorPipeline]
 
     device = torch.device(args.device)
     model, tokenizer, data_config, adapter_metadata = load_adapter_checkpoint(args.adapter_dir, device)
-    generator = FlanT5Generator(model, tokenizer, max_input_tokens=data_config.max_source_length, device=device)
+    generator = FlanT5Generator(model, tokenizer, max_input_tokens=data_config.max_source_length, device=device,
+                                no_repeat_ngram_size=args.no_repeat_ngram_size, banned_phrases=args.ban_phrase,
+                                use_adapter=not args.reply_without_adapter)
     passages, _ = load_corpus(args.corpus_run)
-    tutors = {NO_RETRIEVAL: TutorPipeline(generator, stage="rq4")}
+    tutors = {NO_RETRIEVAL: TutorPipeline(generator, stage="rq4", clean_evidence=args.clean_evidence,
+                                          state_answer=args.state_answer)}
     for method_id in METHOD_IDS:
         config = load_embedding_config(method_id)
         retriever = DenseRetriever(
@@ -131,7 +143,12 @@ def _real_components(args: argparse.Namespace) -> tuple[dict[str, TutorPipeline]
             passages,
         )
         tutors[method_id] = TutorPipeline(generator, stage="rq4", retriever=retriever,
-                                          gate=Gate.load(method_id), method_id=method_id)
+                                          gate=Gate.load(method_id), method_id=method_id,
+                                          clean_evidence=args.clean_evidence, state_answer=args.state_answer)
+        if args.gate_off:
+            tutors[f"{method_id}{GATE_OFF_SUFFIX}"] = TutorPipeline(
+                generator, stage="rq4", retriever=retriever, gate_off=True, method_id=f"{method_id}{GATE_OFF_SUFFIX}",
+                clean_evidence=args.clean_evidence, state_answer=args.state_answer)
 
     if args.predictions is not None:
         from_file = load_prediction_file(args.predictions)
@@ -158,6 +175,10 @@ def _real_components(args: argparse.Namespace) -> tuple[dict[str, TutorPipeline]
         "queries": QUERIES_PATH.as_posix(),
         "queries_sha256": sha256(QUERIES_PATH.read_bytes()).hexdigest(),
         "dry_run": args.dry_run,
+        "clean_evidence": args.clean_evidence,
+        "state_answer": args.state_answer,
+        "generation": generator.settings,
+        "gate_off_systems": args.gate_off,
     }
     return tutors, predict, metadata
 
@@ -170,6 +191,16 @@ def main() -> None:
     parser.add_argument("--index-run", default="full-20261016")
     parser.add_argument("--corpus-run", type=Path, default=Path("outputs/retrieval/corpus/20261016-142815"))
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--clean-evidence", action="store_true",
+                        help="Strip answer-letter prefixes (e.g. \"Ans. is 'a' i.e.\") from passages in the prompt.")
+    parser.add_argument("--state-answer", action="store_true",
+                        help="Add a \"Tutor's answer: X. <option>\" line (the predicted answer) to the prompt.")
+    parser.add_argument("--no-repeat-ngram-size", type=int, help="Forbid repeating any n-gram of this size.")
+    parser.add_argument("--ban-phrase", action="append", default=[], help="Text the reply may not contain.")
+    parser.add_argument("--reply-without-adapter", action="store_true",
+                        help="Write replies with plain FLAN-T5 (LoRA off); the MCQ answer still uses the adapter.")
+    parser.add_argument("--gate-off", action="store_true",
+                        help="Also run each retrieval system without its gate (always answers from its top passages).")
     parser.add_argument("--dry-run", action="store_true",
                         help="Mark the run as a pipeline check (e.g. with a smoke checkpoint), not an RQ4 result.")
     args = parser.parse_args()

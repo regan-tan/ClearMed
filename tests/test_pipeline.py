@@ -9,6 +9,7 @@ from clearmed.conversation.pipeline import (
     StubGenerator,
     TutorPipeline,
     build_prompt,
+    strip_answer_prefixes,
 )
 from clearmed.retrieval.embedders import Embedder, load_embedding_config
 from clearmed.retrieval.gate import Gate
@@ -158,7 +159,7 @@ class FakeModel:
         return self
 
     def generate(self, *, decoder_input_ids, **kwargs):
-        self.decoder_input_ids = decoder_input_ids
+        self.decoder_input_ids, self.kwargs = decoder_input_ids, kwargs
         assert kwargs["do_sample"] is False
         return torch.cat([decoder_input_ids, torch.tensor([[7, 8]])], dim=1)
 
@@ -172,3 +173,81 @@ def test_flan_t5_generator_prefills_the_predicted_answer():
     assert reply == "Answer: C\nExplanation: t7 t8"
     with pytest.raises(ValueError, match="input limit"):
         FlanT5Generator(model, FakeTokenizer(), max_input_tokens=2, device="cpu").generate("a b c", answer_label="C")
+
+
+def test_generator_passes_loop_and_banned_phrase_controls_only_when_set():
+    model = FakeModel()
+    FlanT5Generator(model, FakeTokenizer(), max_input_tokens=50, device="cpu").generate("p", answer_label="A")
+    assert "no_repeat_ngram_size" not in model.kwargs and "bad_words_ids" not in model.kwargs
+    generator = FlanT5Generator(model, FakeTokenizer(), max_input_tokens=50, device="cpu",
+                                no_repeat_ngram_size=3, banned_phrases=["Ans"])
+    generator.generate("p", answer_label="A")
+    assert model.kwargs["no_repeat_ngram_size"] == 3 and model.kwargs["bad_words_ids"] == [[3]]
+    assert generator.settings["banned_phrases"] == ["Ans"]
+
+
+@pytest.mark.parametrize("explanation, expected", [
+    ("Ans. is 'a' i.e., Clozapine o Antipsychotics", "Clozapine o Antipsychotics"),
+    ("Ans. (c) ASOM (Ref. Scott Brown)", "ASOM (Ref. Scott Brown)"),
+    ("(c) ASOM(Ref. Scott Brown)", "ASOM(Ref. Scott Brown)"),
+    ("A i.e. Fluoxetine", "Fluoxetine"),
+    ("C. Rotor syndrome(Ref: Nelson)", "Rotor syndrome(Ref: Nelson)"),
+    ("Ans. Dhatura", "Dhatura"),
+    ("A 40-year-old woman has", "A 40-year-old woman has"),
+    ("Answer to this is cardiac output", "Answer to this is cardiac output"),
+    ("Gilbert syndrome causes", "Gilbert syndrome causes"),
+])
+def test_strip_answer_prefixes(explanation, expected):
+    passage = f"Question: Q? Answer: X Explanation: {explanation}"
+    assert strip_answer_prefixes(passage) == f"Question: Q? Answer: X Explanation: {expected}"
+
+
+def test_clean_evidence_changes_only_the_prompt_passages():
+    passages = [{"doc_id": "d1", "text": "Question: Q? Answer: Clozapine Explanation: Ans. is 'c' i.e., Clozapine"}]
+    plain = build_prompt(RECORD, "Why?", passages, count_tokens=lambda t: len(t.split()), max_tokens=500)
+    clean = build_prompt(RECORD, "Why?", passages, count_tokens=lambda t: len(t.split()), max_tokens=500,
+                         clean_evidence=True)
+    assert "Ans. is 'c'" in plain.text and "Ans." not in clean.text
+    assert "Explanation: Clozapine" in clean.text and clean.passage_ids == plain.passage_ids
+
+
+class FakePeftModel(FakeModel):
+    def __init__(self):
+        self.adapter_on, self.adapter_during_generate = True, []
+
+    def disable_adapter(self):
+        model = self
+
+        class Off:
+            def __enter__(self):
+                model.adapter_on = False
+
+            def __exit__(self, *exc):
+                model.adapter_on = True
+
+        return Off()
+
+    def generate(self, **kwargs):
+        self.adapter_during_generate.append(self.adapter_on)
+        return super().generate(**kwargs)
+
+
+def test_reply_without_adapter_switches_lora_off_only_while_generating():
+    model = FakePeftModel()
+    FlanT5Generator(model, FakeTokenizer(), max_input_tokens=50, device="cpu", use_adapter=False).generate(
+        "p", answer_label="A")
+    FlanT5Generator(model, FakeTokenizer(), max_input_tokens=50, device="cpu").generate("p", answer_label="A")
+    assert model.adapter_during_generate == [False, True] and model.adapter_on
+    with pytest.raises(ValueError, match="PEFT model"):
+        FlanT5Generator(FakeModel(), FakeTokenizer(), max_input_tokens=50, device="cpu", use_adapter=False)
+
+
+def test_stated_answer_line_uses_the_predicted_answer_only():
+    tutor = TutorPipeline(StubGenerator(), stage="rq4", retriever=FakeRetriever([0.9]), gate=Gate("minilm", 0.5),
+                          method_id="minilm", state_answer=True)
+    result = tutor.respond(RECORD, predicted_label="B")
+    assert "\n\nTutor's answer: B. losartan\n\nEvidence:" in result["prompt"]
+    assert "propranolol\n\nTutor's answer" not in result["prompt"] and result["state_answer"] is True
+    assert "Tutor's answer" not in pipeline()[0].respond(RECORD, predicted_label="B")["prompt"]
+    with pytest.raises(ValueError, match="Stated answer"):
+        build_prompt(RECORD, "Why?", [], count_tokens=len, max_tokens=999, stated_answer="E")

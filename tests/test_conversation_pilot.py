@@ -75,27 +75,71 @@ def test_too_few_accepted_replies_writes_nothing(tmp_path):
     assert not (tmp_path / "pilot").exists()
 
 
-def test_score_needs_complete_grades_and_applies_pass_rule(tmp_path):
-    PILOT.run(records=records(), tutor=tutor(), predict=lambda rows: ["A"] * len(rows),
-              output_dir=tmp_path / "pilot", n=3)
-    sheet = tmp_path / "pilot" / "pilot_sheet.csv"
+def grade(output_dir, grades):
+    sheet = output_dir / "pilot_sheet.csv"
     with sheet.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
-    with pytest.raises(ValueError, match="must be 0 or 1"):
-        PILOT.score(tmp_path / "pilot")
-    for row, grades in zip(rows, [("1", "1"), ("1", "0"), ("1", "1")], strict=True):
-        row["addresses_follow_up"], row["uses_new_evidence_fact"] = grades
+    for row, (addresses, uses) in zip(rows, grades, strict=True):
+        row["addresses_follow_up"], row["uses_new_evidence_fact"] = addresses, uses
     with sheet.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=PILOT.SHEET_COLUMNS)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def test_score_needs_complete_grades_and_applies_pass_rule(tmp_path):
+    PILOT.run(records=records(), tutor=tutor(), predict=lambda rows: ["A"] * len(rows),
+              output_dir=tmp_path / "pilot", n=5)
+    with pytest.raises(ValueError, match="must be 0 or 1"):
+        PILOT.score(tmp_path / "pilot")
+    grade(tmp_path / "pilot", [("1", "1"), ("1", "0"), ("1", "1"), ("0", "1"), ("0", "0")])
     result = PILOT.score(tmp_path / "pilot")
-    assert result["passed"] == 2 and result["n"] == 3 and not result["pilot_passed"]
+    assert result["passed"] == 2 and result["n"] == 5 and result["pass_rate"] == 0.4
+    assert result["pass_mark"] == 3 and not result["pilot_passed"]  # 60% of 5, rounded up.
+    low, high = result["pass_rate_ci95"]
+    assert low <= 0.4 <= high
     assert json.loads((tmp_path / "pilot" / "pilot_result.json").read_text("utf-8"))["passed"] == 2
+
+
+def test_pass_mark_stays_six_of_ten():
+    assert __import__("math").ceil(PILOT.PASS_RATE * 10) == 6
+
+
+def gate_off_tutor():
+    return TutorPipeline(StubGenerator(), stage="calibration", retriever=ScoredRetriever([]),
+                         gate_off=True, method_id="minilm_gate_off")
+
+
+def test_gate_off_pilot_answers_every_follow_up_in_the_same_order(tmp_path):
+    first = PILOT.run(records=records(), tutor=gate_off_tutor(), predict=lambda rows: ["B"] * len(rows),
+                      output_dir=tmp_path / "a", n=8)
+    PILOT.run(records=records(), tutor=gate_off_tutor(), predict=lambda rows: ["B"] * len(rows),
+              output_dir=tmp_path / "b", n=8)
+    assert first["fallback"] == 0 and first["attempted"] == 8 and first["gate_off"] is True
+    assert first["threshold"] is None
+    ids = [(tmp_path / d / "pilot_sheet.csv").read_text("utf-8").splitlines() for d in ("a", "b")]
+    assert [line.split(",")[0] for line in ids[0]] == [line.split(",")[0] for line in ids[1]]
+
+
+def test_compare_pairs_pilots_and_rejects_different_follow_ups(tmp_path):
+    for name in ("a", "b"):
+        PILOT.run(records=records(), tutor=gate_off_tutor(), predict=lambda rows: ["B"] * len(rows),
+                  output_dir=tmp_path / name, n=4)
+    grade(tmp_path / "a", [("1", "1")] * 3 + [("0", "0")])
+    grade(tmp_path / "b", [("1", "1")] + [("1", "0")] * 3)
+    result = PILOT.compare(tmp_path / "a", tmp_path / "b")
+    assert (result["passed_a"], result["passed_b"], result["only_a_passed"], result["only_b_passed"]) == (3, 1, 2, 0)
+    assert result["a_minus_b"]["mean_difference"] == pytest.approx(0.5)
+    PILOT.run(records=records(), tutor=gate_off_tutor(), predict=lambda rows: ["B"] * len(rows),
+              output_dir=tmp_path / "c", n=3)
+    grade(tmp_path / "c", [("1", "1")] * 3)
+    with pytest.raises(ValueError, match="different follow-ups"):
+        PILOT.compare(tmp_path / "a", tmp_path / "c")
 
 
 @pytest.mark.parametrize("text, expected", [
     ("Ans. (c) Hypothyroidism", True), ("Answer is B because", True), ("ans: d", True),
+    ("Ans. is 'a' i.e., Clozapine", True), ("Ans. Dhatura", False), ("the answer is a hormone", False),
     ("The answer depends on cardiac output", False), ("Answers vary", False),
 ])
 def test_stray_answer_letter_pattern(text, expected):
