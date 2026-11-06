@@ -11,6 +11,32 @@ npm install
 npm run dev
 ```
 
+## Connect Practice MCQ to the backend
+
+Copy `.env.example` to `.env.local` in this directory, then run `npm run dev`.
+The example enables `VITE_USE_MOCK=false` and proxies `/api` to
+`http://127.0.0.1:8000`. Start the backend separately from the repository root:
+
+```bash
+uv run python scripts/serve_demo.py --adapter-dir checkpoints/flan_t5_lora/flan-base-full-seed42/best
+```
+
+This requires the existing checkpoint, corpus, retrieval indexes and cached dataset;
+see [the demo guide](../docs/demo.md). Set `CLEARMED_BACKEND_URL` in `.env.local`
+to use another backend origin (for example `http://127.0.0.1:8001`, without `/api`).
+Restart Vite after changing either setting. `.env.local` is ignored by Git.
+
+With no mode setting, Practice uses mocks. `VITE_USE_MOCK` accepts only `true`
+(preview) or `false` (backend); invalid values are rejected. The header displays
+**Practice preview** or **Practice backend** to identify the selected adapter.
+The latter is a configuration label, not a server-health indicator. Backend failures
+remain errors and do not fall back to mock data. Notebook and Flashcards keep their
+**Frontend preview** label and preview adapters in either configuration.
+
+The proxy setting is for the Vite development server. Production hosting must route
+same-origin `/api` requests to FastAPI. `VITE_USE_MOCK` is fixed when the frontend
+is built; rebuild after changing it.
+
 ## Current preview
 
 - Multiple notebooks: each has its own sources, chats, notes and flashcards. Switch, create, rename (edit the title in place) and delete from the menu next to the title. Practice MCQ progress, search settings and theme are shared.

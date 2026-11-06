@@ -1,6 +1,13 @@
 import { mockApi } from './mock'
 import type { TutorApi } from './types'
 
+const mockSetting = import.meta.env.VITE_USE_MOCK
+if (mockSetting !== undefined && mockSetting !== 'true' && mockSetting !== 'false') {
+  throw new Error('VITE_USE_MOCK must be "true" (preview) or "false" (backend).')
+}
+
+export const practicePreview = mockSetting !== 'false'
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -17,4 +24,4 @@ const httpApi: TutorApi = {
 }
 
 // Set VITE_USE_MOCK=false once the FastAPI backend is running.
-export const api: TutorApi = import.meta.env.VITE_USE_MOCK === 'false' ? httpApi : mockApi
+export const api: TutorApi = practicePreview ? mockApi : httpApi

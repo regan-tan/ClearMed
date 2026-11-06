@@ -1,11 +1,21 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AppHeader } from './AppHeader'
 
+const connection = vi.hoisted(() => ({ practicePreview: true }))
+vi.mock('../api/client', () => connection)
+afterEach(cleanup)
+
 describe('AppHeader', () => {
-  it('renders the preview label and switches modes', async () => {
+  it.each([
+    { mode: 'notebook' as const, preview: false, label: 'Frontend preview' },
+    { mode: 'flashcards' as const, preview: false, label: 'Frontend preview' },
+    { mode: 'practice' as const, preview: true, label: 'Practice preview' },
+    { mode: 'practice' as const, preview: false, label: 'Practice backend' },
+  ])('labels $mode with $label and switches modes', async ({ mode, preview, label }) => {
+    connection.practicePreview = preview
     const onModeChange = vi.fn()
     render(
       <AppHeader
@@ -15,7 +25,7 @@ describe('AppHeader', () => {
         onSelectNotebook={vi.fn()}
         onCreateNotebook={vi.fn()}
         onDeleteNotebook={vi.fn()}
-        mode="notebook"
+        mode={mode}
         onModeChange={onModeChange}
         model="e5"
         topK={3}
@@ -27,7 +37,8 @@ describe('AppHeader', () => {
     )
 
     expect(screen.getByText('ClearMed')).toBeInTheDocument()
-    expect(screen.getByText('Frontend preview')).toBeInTheDocument()
+    expect(screen.getByText(label)).toBeInTheDocument()
+    if (mode === 'practice') expect(screen.queryByText('Frontend preview')).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /practice/i }))
     expect(onModeChange).toHaveBeenCalledWith('practice')
   })

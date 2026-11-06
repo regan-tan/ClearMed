@@ -1,6 +1,7 @@
 import { BookOpen, Moon, SlidersHorizontal, Sun } from 'lucide-react'
 import { useCallback, useRef, useState, type ReactNode } from 'react'
 import { notebookApi } from '../api/notebook'
+import { practicePreview } from '../api/client'
 import type { EmbeddingModel } from '../api/types'
 import { useDismiss } from '../hooks/useDismiss'
 import type { NotebookMeta } from '../notebooks'
@@ -84,7 +85,11 @@ export function AppHeader(props: Props) {
       </div>
 
       <div className="header-actions">
-        {notebookApi.preview && <span className="preview-label">Frontend preview</span>}
+        {mode === 'practice' ? (
+          <span className="preview-label">{practicePreview ? 'Practice preview' : 'Practice backend'}</span>
+        ) : (
+          notebookApi.preview && <span className="preview-label">Frontend preview</span>
+        )}
         <div className="settings-anchor" ref={settingsRef}>
           <button
             className="icon-button"
