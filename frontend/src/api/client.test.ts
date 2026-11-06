@@ -77,4 +77,17 @@ describe('backend response handling', () => {
     const api = await backend(new Response('<html>Wrong server</html>'))
     await expect(api.listQuestions()).rejects.toThrow('invalid JSON response')
   })
+
+  it.each([
+    { reply: '', fallback: false, evidence: [] },
+    { reply: 'Reply', fallback: 'false', evidence: [] },
+    { reply: 'Reply', fallback: false, evidence: [{ id: 'd1', text: 'Text', subject: 'Test', score: '0.8' }] },
+    { reply: 'Reply', fallback: false, evidence: [{ id: 'd1', text: 'Text', subject: 'Test', score: null }] },
+    { reply: 'Reply', fallback: false, evidence: [1, 2] },
+    { reply: 'Reply', fallback: false, evidence: Array(2).fill({ id: 'd1', text: 'Text', subject: 'Test', score: 0.8 }) },
+  ])('rejects invalid follow-up responses: %j', async body => {
+    const api = await backend(new Response(JSON.stringify(body)))
+    await expect(api.followUp({ question_id: 'q1', history: [], message: 'Why?', embedding_model: 'minilm', top_k: 3 }))
+      .rejects.toThrow('invalid follow-up response')
+  })
 })

@@ -1,5 +1,5 @@
 import { mockApi } from './mock'
-import type { McqPrediction, Question, TutorApi } from './types'
+import type { FollowUpResponse, McqPrediction, Question, TutorApi } from './types'
 
 const mockSetting = import.meta.env.VITE_USE_MOCK
 if (mockSetting !== undefined && mockSetting !== 'true' && mockSetting !== 'false') {
@@ -65,7 +65,17 @@ const httpApi: TutorApi = {
     }
     return data as unknown as McqPrediction
   },
-  followUp: req => request('/follow-up', { method: 'POST', body: JSON.stringify(req) }),
+  followUp: async req => {
+    const data = await request<unknown>('/follow-up', { method: 'POST', body: JSON.stringify(req) })
+    if (!isRecord(data) || !isText(data.reply) || typeof data.fallback !== 'boolean' ||
+      !Array.isArray(data.evidence) || data.evidence.some(e =>
+        !isRecord(e) || !isText(e.id) || !isText(e.text) || typeof e.subject !== 'string' ||
+        typeof e.score !== 'number' || !Number.isFinite(e.score)
+      ) || new Set(data.evidence.map(e => e.id)).size !== data.evidence.length) {
+      throw new Error('The tutor backend returned an invalid follow-up response.')
+    }
+    return data as unknown as FollowUpResponse
+  },
 }
 
 // Set VITE_USE_MOCK=false once the FastAPI backend is running.

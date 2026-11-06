@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { AlertTriangle, ArrowUp, Loader2, MessageCircle } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from '../api/client'
-import type { ChatTurn, EmbeddingModel, Evidence, Question } from '../api/types'
+import type { ChatTurn, EmbeddingModel, Evidence, FollowUpRequest, Question } from '../api/types'
 import { EvidenceList } from './EvidenceList'
 import { Markdown } from './Markdown'
 
@@ -25,40 +25,56 @@ export function ChatPanel({ question, embeddingModel, topK, children }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [pending, setPending] = useState<FollowUpRequest | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const inFlight = useRef(false)
+  const mounted = useRef(true)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
 
   useEffect(() => {
     if (messages.length === 0 && !loading) return
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, loading])
 
-  async function send(text: string) {
-    const message = text.trim()
-    if (!message || loading) return
-    const history: ChatTurn[] = messages.map(({ role, content }) => ({ role, content }))
-    setMessages(m => [...m, { role: 'user', content: message }])
-    setInput('')
+  async function submit(request: FollowUpRequest) {
+    if (inFlight.current) return
+    inFlight.current = true
+    setPending(request)
+    setError(null)
     setLoading(true)
     try {
-      const res = await api.followUp({
-        question_id: question.id,
-        history,
-        message,
-        embedding_model: embeddingModel,
-        top_k: topK,
-      })
+      const res = await api.followUp(request)
+      if (!mounted.current) return
       setMessages(m => [
         ...m,
+        { role: 'user', content: request.message },
         { role: 'assistant', content: res.reply, evidence: res.evidence, fallback: res.fallback },
       ])
+      setPending(null)
     } catch (e) {
-      setMessages(m => [
-        ...m,
-        { role: 'assistant', content: `Something went wrong (${e instanceof Error ? e.message : 'unknown error'}).` },
-      ])
+      if (mounted.current) setError(e instanceof Error ? e.message : 'Unknown error')
     } finally {
-      setLoading(false)
+      inFlight.current = false
+      if (mounted.current) setLoading(false)
     }
+  }
+
+  function send(text: string) {
+    const message = text.trim()
+    if (!message || inFlight.current) return
+    setInput('')
+    void submit({
+      question_id: question.id,
+      history: messages.map(({ role, content }) => ({ role, content })),
+      message,
+      embedding_model: embeddingModel,
+      top_k: topK,
+    })
   }
 
   return (
@@ -68,7 +84,7 @@ export function ChatPanel({ question, embeddingModel, topK, children }: Props) {
         <div className="mx-auto max-w-3xl px-5 py-7 sm:px-10 sm:py-9">
           {children}
 
-          {messages.length > 0 && (
+          {(messages.length > 0 || pending) && (
             <div className="mt-8 mb-5 flex items-center gap-3 text-xs font-medium text-fg-subtle">
               <span className="h-px flex-1 bg-border" />
               <MessageCircle className="h-3.5 w-3.5" /> Follow-up
@@ -102,13 +118,30 @@ export function ChatPanel({ question, embeddingModel, topK, children }: Props) {
                     <Markdown>{m.content}</Markdown>
                   </div>
                   {m.evidence && <EvidenceList evidence={m.evidence} />}
+                  {m.fallback && m.evidence && m.evidence.length > 0 && (
+                    <p className="mt-2 text-xs text-fg-muted">These passages did not meet the evidence confidence threshold.</p>
+                  )}
+                  {m.evidence?.length === 0 && <p className="mt-2 text-xs text-fg-muted">No passages were returned.</p>}
                 </div>
               ),
             )}
 
+            {pending && (
+              <div className="flex justify-end">
+                <p className="max-w-[80%] rounded-2xl rounded-br-md bg-bubble-user px-4 py-2.5 text-sm text-bubble-user-fg">
+                  {pending.message}
+                </p>
+              </div>
+            )}
+            {error && pending && (
+              <div role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+                <p>Couldn’t get a tutor reply ({error}).</p>
+                <button className="mt-2 underline" onClick={() => void submit(pending)}>Retry follow-up</button>
+              </div>
+            )}
             {loading && (
-              <p className="flex items-center gap-2 text-sm text-fg-muted">
-                <Loader2 className="h-4 w-4 animate-spin" /> Retrieving evidence…
+              <p role="status" className="flex items-center gap-2 text-sm text-fg-muted">
+                <Loader2 className="h-4 w-4 animate-spin" /> Preparing tutor reply…
               </p>
             )}
             <div ref={bottomRef} />
@@ -121,7 +154,7 @@ export function ChatPanel({ question, embeddingModel, topK, children }: Props) {
           <h2 className="text-sm font-semibold">Talk through the reasoning</h2>
           <p className="mt-1 text-xs text-fg-muted">Ask a follow-up and inspect the supporting passages.</p>
         </div>
-        {messages.length === 0 && (
+        {messages.length === 0 && !pending && (
           <div className="mb-2.5 flex flex-wrap gap-2">
             {SUGGESTIONS.map(s => (
               <button
