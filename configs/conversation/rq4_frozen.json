@@ -1,0 +1,31 @@
+{
+  "frozen_on": "2026-11-04",
+  "decided_by": "group, after the Plan 6 generator pilot on internal_dev follow-ups (never validation)",
+  "mcq_answer_model": {
+    "adapter_dir": "checkpoints/flan_t5_lora/flan-base-full-seed42/best",
+    "model_name": "google/flan-t5-base",
+    "lora": {"rank": 8, "alpha": 16, "dropout": 0.05, "target_modules": ["q", "v"]},
+    "selected_global_step": 51000,
+    "note": "Part I's frozen checkpoint (Regan). Its predicted answer goes into the retrieval query and pre-fills 'Answer: X'."
+  },
+  "reply_model": {
+    "model": "google/flan-t5-base with the LoRA adapter switched off (plain pretrained weights)",
+    "flag": "--reply-without-adapter",
+    "decoding": "greedy, max_new_tokens 128, no_repeat_ngram_size 3",
+    "prompt": "Part I MCQ input + up to 3 numbered passages (answer-letter prefixes stripped) + previous turn + student follow-up; max 512 input tokens",
+    "not_used": ["--state-answer (pilot 2/10)", "--ban-phrase Ans (no gain with plain FLAN-T5)"]
+  },
+  "systems": {
+    "gated": ["no_retrieval", "minilm", "e5_base_v2", "biolord_2023"],
+    "gate_off": ["minilm_gate_off", "e5_base_v2_gate_off", "biolord_2023_gate_off"],
+    "gate_thresholds": "configs/retrieval/gate_thresholds.json (frozen in Plan 5)"
+  },
+  "pilot_evidence": {
+    "lora_reply_plain": "outputs/conversation/pilot/pilot-flanbase-20261104 (2/10)",
+    "lora_reply_clean_norep3": "outputs/conversation/pilot/pilot-flanbase-clean-norep3-20261104 (3/10)",
+    "lora_reply_clean_norep3_noans": "outputs/conversation/pilot/pilot-flanbase-clean-norep3-noans-20261104 (3/10)",
+    "plain_reply_clean_norep3": "outputs/conversation/pilot/pilot-flanbase-plainreply-20261104 (4/10, chosen)",
+    "plain_reply_clean_norep3_stated": "outputs/conversation/pilot/pilot-flanbase-plainreply-stated-20261104 (2/10)"
+  },
+  "command": "uv run python scripts/run_conversation_eval.py --run-id <run_id> --adapter-dir checkpoints/flan_t5_lora/flan-base-full-seed42/best --reply-without-adapter --clean-evidence --no-repeat-ngram-size 3 --gate-off"
+}

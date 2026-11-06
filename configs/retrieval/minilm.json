@@ -1,0 +1,9 @@
+{
+  "method_id": "minilm",
+  "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+  "revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+  "query_prefix": "",
+  "document_prefix": "",
+  "max_seq_length": null,
+  "batch_size": 64
+}

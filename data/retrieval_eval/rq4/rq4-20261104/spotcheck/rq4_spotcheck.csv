@@ -1,0 +1,162 @@
+sheet,item_id,question,correct_answer,reference_explanation,previous_turn,follow_up,evidence,reply,claude_correct,claude_no_unsupported_claims,claude_consistent,claude_grounded,your_correct,your_no_unsupported_claims,your_consistent,your_grounded,agree_with_claude (Y/N),comment
+blind,R-188517,"Chronic mercury toxicity results from:
+A. Inhalation while removing old amalgam
+B. Skin contact
+C. Mercury vapour
+D. All of the above",D. All of the above,"All the options given in the question lead to mercury toxicity.
+Methyl mercury is the most common form that is transformed by natural processes; it is a more toxic form than ethyl mercury (C2H5Hg+) or elemental mercury. Methyl mercury is a major safety concern because it bioaccumulates through the food chain; its pharmacokinetic half-life is longer (1.5 to 3 months) than that of ethyl mercury (less than 1 week). In air, the concentrations of mercury range from about 0.01 to 0.02 µg/m3.
+Mercury accumulates in the kidneys. In the brain, metallic mercury can be converted to an inorganic form that is retained in the brain. Elemental mercury and mercury vapor have a half-life of 1 to 3 months. Mercury leaves the body by excretion through urine and feces.
+Exposure to high levels of mercury can injure the brain, kidneys, and developing fetus. Chronic mercury toxicity may be manifested as tremors; memory loss; and changes in personality, vision, and hearing.
+Reference: PHILLIPS’ SCIENCE OF DENTAL MATERIALS, 12th ed page no 124",,Why not option C?,,"Answer: D
+Explanation: Mercury poisoning is not poisonous on ingestion, as it is not absorbed. But its vapours are poisonous. Mercuric compounds being soluble are more poisonous than mercurous compounds. Mercuric chloride (HgCl2), also called corrosive sublimate or perchloride of mercury, is most poisons salt of mercury.",1,2,n/a,,1,1,n/a,,N,The explanation does not address why C alone is incomplete; oral mercury toxicity statement is overgeneralized.
+blind,R-958511,"Reed Sternberg cells in Hodgkin's lymphoma are derived from
+A. Macrophages
+B. N K cell
+C. T cell
+D. B cell",D. B cell,(none in dataset),,Why is that the correct answer?,,"Answer: B
+Explanation: Pentavalent immunoglobin is IgM",0,1,n/a,,0,1,n/a,,Y,
+blind,R-761493,"The carat for Au foil used for restorations is:
+A. 18
+B. 20
+C. 22
+D. 24",D. 24,"Direct filling gold, also called gold foil, is a metallic restorative material that relies on its ductility and malleability to adapt to a cavity preparation. The restorative process requires condensation that makes the final restoration practically a wrought metal.
+KARAT
+It refers to the parts of pure gold present in 24 parts of alloy, e.g.,
+— 24 karat gold is pure gold.
+— 22 karat gold is 22 parts pure gold and 2 parts of other metal.","Student: Why is that the correct answer?
+Tutor: I could not find reliable evidence for this follow-up, so I will not guess. Please check your textbook or ask your tutor.",Can you summarise the key point in one sentence?,,"Answer: B
+Explanation: Gold foil is made up of 24 karat gold. Ref: [3]",1,1,2,,1,1,2,,Y,
+blind,R-710803,"Which of the following is most effective for gluconeogenesis in starvation?
+A. Acetyl Co-A stimulation of pyruvate carboxylase
+B. Fructose-1, 6-biphosphate stimulation of phosphofructokinase-1
+C. Citrate stimulation of acetyl carboxylase
+D. Fructose-2, 6-biphosphate stimulation of phosphofructokinase-2",A. Acetyl Co-A stimulation of pyruvate carboxylase,"Ans: A(Ref: Harper 30/c 1)1880)Acetyl Co-A stimulation of pyruvate carboxylase is most effective for gluconeogenesis.In Gluconeogenesis, pyruvate carboxylase catalyzes oxaloacetate synthesis from pyruvate.",,What is the key clue in this question?,,"Answer: B
+Explanation: Acetyl CoA does paicipate in the inactivation of pyruvate dehydrogenase, so that pyrurate preferentially forms oxaloacetate pyrurgivate carboxylase. Oxaloacerol is then conveed into malate, which is transpoed from the mitochondria into the cytoplasm where it is conveired back into oXaloAcetate. The oixaloaxecetate is then converted into phosphoenolpyruvatate using phosphoend",1,1,n/a,,1,1,n/a,,Y,
+blind,R-420724,"Inter dose interval depends on?
+A. Half life of drug
+B. Dose of drug
+C. Age of patient
+D. Bioavailability of drug",A. Half life of drug,(none in dataset),"Student: Why not option D?
+Tutor: Answer: A
+Explanation: The inter dose interval depends on the time of the patient. The final answer: B.",How might this be tested differently in another exam question?,,"Answer: A
+Explanation: The inter dose interval depends on the time of the patient. The final answer: B.",0,0,2,,0,0,2,,Y,
+blind,R-162013,"Reed Sternberg cells in Hodgkin's lymphoma are derived from
+A. Macrophages
+B. N K cell
+C. T cell
+D. B cell",D. B cell,(none in dataset),,Why is that the correct answer?,,"Answer: B
+Explanation: Reed Sternberg cells in Hodgkin's lymphoma are derived from B cell.",1,1,n/a,,1,1,n/a,,Y,
+blind,R-316910,"Which is not a dimorphic fungi?
+A. P. marneffi
+B. Histoplasma capsulatum
+C. Blastomyces dermatitidis
+D. Pneumocystis jirovecii",D. Pneumocystis jirovecii,Dimorphic fungi :- They exist as molds in the environment at ambient temperature(250C) and as yeasts in human tissues at body temperature(370C). several medically impoant fungi are thermally dimorphic such as:- Histoplasma capsulatum Blastomyces dermatitidis Coccidiodes immitis Paracoccidiodes brasiliensis Penicillium marneffei Sporothrix schenckii All of the above mentioned dimorphic fungi causes systemic mycoses except sporothrix which is responsible for sub cutaneous infection.,,Why not option D?,,"Answer: D
+Explanation: Pneumocystis jirovecii is a fungi.",1,2,n/a,,1,2,n/a,,Y,
+blind,R-515731,"Chronic mercury toxicity results from:
+A. Inhalation while removing old amalgam
+B. Skin contact
+C. Mercury vapour
+D. All of the above",D. All of the above,"All the options given in the question lead to mercury toxicity.
+Methyl mercury is the most common form that is transformed by natural processes; it is a more toxic form than ethyl mercury (C2H5Hg+) or elemental mercury. Methyl mercury is a major safety concern because it bioaccumulates through the food chain; its pharmacokinetic half-life is longer (1.5 to 3 months) than that of ethyl mercury (less than 1 week). In air, the concentrations of mercury range from about 0.01 to 0.02 µg/m3.
+Mercury accumulates in the kidneys. In the brain, metallic mercury can be converted to an inorganic form that is retained in the brain. Elemental mercury and mercury vapor have a half-life of 1 to 3 months. Mercury leaves the body by excretion through urine and feces.
+Exposure to high levels of mercury can injure the brain, kidneys, and developing fetus. Chronic mercury toxicity may be manifested as tremors; memory loss; and changes in personality, vision, and hearing.
+Reference: PHILLIPS’ SCIENCE OF DENTAL MATERIALS, 12th ed page no 124",,Why not option C?,,"Answer: D
+Explanation: Mercury is a metal.",1,2,n/a,,1,2,n/a,,Y,
+blind,R-258081,"Which is not a dimorphic fungi?
+A. P. marneffi
+B. Histoplasma capsulatum
+C. Blastomyces dermatitidis
+D. Pneumocystis jirovecii",D. Pneumocystis jirovecii,Dimorphic fungi :- They exist as molds in the environment at ambient temperature(250C) and as yeasts in human tissues at body temperature(370C). several medically impoant fungi are thermally dimorphic such as:- Histoplasma capsulatum Blastomyces dermatitidis Coccidiodes immitis Paracoccidiodes brasiliensis Penicillium marneffei Sporothrix schenckii All of the above mentioned dimorphic fungi causes systemic mycoses except sporothrix which is responsible for sub cutaneous infection.,,Why not option D?,,"Answer: D
+Explanation: D is a fungus that is not a dimorphic fungi.",2,2,n/a,,2,2,n/a,,Y,
+blind,R-325276,"In which of the following glucocoicoid is used?
+A. E.coli septicemia
+B. Severe typhoid
+C. Cerebral Malaria
+D. Leishmaniasis",B. Severe typhoid,"Answer- B. Severe typhoidIn critically ill patients with enteric fever, the administration of dexamethasone with chloramphenicol was asssociated with a sabstantially lower moality rate than was treatment with chloramphenicol alone.","Student: Why is that the correct answer?
+Tutor: Answer: B
+Explanation: Glucocoicoid is used in a medical exam.",How might this be tested differently in another exam question?,,"Answer: B
+Explanation: Glucocoid is used in a medical exam. Student follow-up:",0,0,2,,0,0,2,,Y,
+grounding,G-764676,"All of the following influence the efficiency of bur, except:
+A. Neck diameter
+B. Length and diameter of bur
+C. Height of taper of bur
+D. Spiral angle and cross-cuts of bur",C. Height of taper of bur,(none in dataset),"Student: Why not option C?
+Tutor: Answer: D
+Explanation: The Pro Taper system is comprised of three Shaping and three Finishing instruments.",What is a common mistake students make with this topic?,"[1] Question: What is the Dynamic measurement of the displacement of bur head from its axis referred to? Answer: Run-Out Explanation: Concentricity is a direct measurement of the symmetry of the bur head. It measures how closely a single circle can be passed through the tips of all the blades. It is an indication as to whether one blade is longer or shorter than the others. It is only a static measurement. Run-out, on the other hand, is a dynamic measurement of the maximum displacement of the bur head from it axis of rotation while the bur runs. The average clinically acceptable run-out is 0.023 mm.
+[2] Question: The retention of dowel in a pin retained crown is increased by Answer: Increased length, serrated surface and parallel sides. Explanation: Post should be at least 2/3 the root length, parallel sided and serrated for increased retention in the canal
+[3] Question: Arrange the following preparations in increasing order of their resisting area Answer: C < B < A Explanation: The resisting area decreases as the preparation taper increases. For a cylinder with no taper, the resisting area would cover half the axial walls (A). For an deafly-tapered tooth preparation, the resisting area covers somewhat less than half the axial walls (B). An over-tapered (20 degrees) preparation has only a small resisting area near the occlusal surface (C).","Answer: D
+Explanation: The Pro Taper system is composed of three Shaping and finishing instruments.",,,,0,,,,0,Y,
+grounding,G-600446,"Surgery on the hard palate of a 3 years old cleft patient may inhibit growth, causing the facial profile to become:
+A. Straight
+B. Elongated
+C. Shortened
+D. More concave",D. More concave,(none in dataset),,What is the key clue in this question?,"[1] Question: A 6 year old female child reported with a chief complaint of proclined upper anteriors. Parents give a history of prolonged bottle-feeding and a persistent thumb sucking habit. Clinical examination reveals anterior open bite with proclined upper anterior and retroclined lower anterior teeth and associated tongue thrusting. Usually digit sucking habits are outgrown by: Answer: 3-4 years Explanation: Thumb-sucking in children No active intervention regardless of type and severity of malocclusion because of general emotional immaturity. Most children out grow the habit by approximately 5 years of age. Malocclusion is self-correcting, if ceased by the time of eruption of permanent teeth. Parents are advised to ignore habit. Give more attention to the child when not sucking. If occlusion Class II, advise need for future orthodontic treatment. Ref: Textbook of Orthodontics Gurkeerat Singh Second edition
+[2] Question: A 9-year-old child with high arched palate has shoulders meeting in front of his chest. He has: Answer: Cleidocranial dysostosis Explanation: CLEIDOCRANIAL DYSOSTOSIS-AD Clinical and Radiological Features: Skull Involvement- Elfin faces- skull is wider but the face appears small and flat looking (hypoplastic bones) Eyes are wide set Deciduous teeth erupt normally,permanent teeth are delayed and maldeveloped. Clavicles maybe underdeveloped or absent. M/C defect is loss of lateral 1/3rd > loss of middle third of clavicle Bilateral clavicle hypoplasia, child can touch the shoulders together in front of the chest. Limbs- Coxa vara is seen, 2nd metacarpal is usually long
+[3] Question: 3-month infants with abdominal palpable mass & non-bilious vomiting – Answer: Hypertrophic pyloric","Answer: B
+Explanation: B is a complication of a disease. B is the most common cause of coma. [2]",,,,0,,,,0,Y,
+grounding,G-108753,"Which is not a dimorphic fungi?
+A. P. marneffi
+B. Histoplasma capsulatum
+C. Blastomyces dermatitidis
+D. Pneumocystis jirovecii",D. Pneumocystis jirovecii,Dimorphic fungi :- They exist as molds in the environment at ambient temperature(250C) and as yeasts in human tissues at body temperature(370C). several medically impoant fungi are thermally dimorphic such as:- Histoplasma capsulatum Blastomyces dermatitidis Coccidiodes immitis Paracoccidiodes brasiliensis Penicillium marneffei Sporothrix schenckii All of the above mentioned dimorphic fungi causes systemic mycoses except sporothrix which is responsible for sub cutaneous infection.,,Why not option D?,"[1] Question: Dimorphic fungus in the following is Answer: Blastomyces Explanation: Blastomyces is a dimorphic fungus, shows filamentous and yeast form. Candida and Cryptococcus show yeast form. Aspergillus shows filamentous form. Reference: Textbook of Microbiology; Baveja; 4th edition
+[2] Question: All of the following are dimorphic fungi, except: Answer: Cryptococcus Explanation: Cryptococcus
+[3] Question: Which of the following is a dimorphic fungus Answer: Sporothrix schenckii Explanation: Tinea versicolor and Microsporum are dermatophytes which is a mould. Reference: Textbook of Microbiology; Baveja; 4th edition","Answer: D
+Explanation: Tinea versicolor and Microsporum are dermatophytes which is a mould.",,,,2,,,,1,N,"Explanation is copied from evidence [3], but answer D is not established by it."
+grounding,G-300916,"In Parkinsonism patient, teeth arrangement is
+A. Anatomic
+B. Non anatomic
+C. Semi anatomic
+D. Saucer teeth",B. Non anatomic,(none in dataset),,Why not option C?,"[1] Question: Which of the following is not a disadvantage of anatomic teeth? Answer: Masticatory eﬃciency is decreased once balanced occlusion is established Explanation: Advantages They are more efficient in cutting and grinding food, so, less masticatory effort and forces are needed. Balanced occlusion can be achieved in eccentric jaw positions (Protrusive, right lateral and left lateral movement). The cusp-fossa relationship helps to guide the mandible into centric occlusion. Aesthetically and psychologically acceptable. The physical contours closely resemble natural teeth and hence, they are more compatible to the oral environment. The disadvantages of these teeth are that they magnify the horizontal forces acting on the ridge and the ‘teeth setting’ is very crucial to obtain proper occlusion (i.e. they should be placed in specified positions). Key Concept: One of the advantages of anatomic teeth is their superior masticatory eﬃciency over other forms of teeth. Ref: Textbook of prosthodontics by Nallaswamy Ed 2nd Pg 8
+[2] Question: PROTAPER NEXT is Answer: Based on M wire NiTi Phase Explanation: Option B is for RACE Option C is for Endo sequence/ Real world endo Twisted file, K3XF etc uses R phase Ni Ti
+[3] Question: Not a feature of Homer syndrome Answer: Exophthalmos Explanation: Exophthalmos","Answer: C
+Explanation: C is not a feature of Homer syndrome.",,,,1,,,,1,Y,
+grounding,G-873795,"Most common tumour of parotid gland is:
+A. Pleomorphic adenoma
+B. Adenoid cystic carcinoma
+C. Cylindroma
+D. Epidermoid carcinoma",A. Pleomorphic adenoma,(none in dataset),,Can you explain the mechanism behind the answer?,"[1] Question: Most common malignant tumour of parotid is Answer: Mucoepidermoid carcinoma Explanation: Mucoepidermoid carcinoma is the most common malignant tumor of the parotid gland and can be divided into low-grade and high-grade tumorsRef: Sabiston, 20e, page no: 830
+[2] Question: Most common malignant parotid tumour is Answer: Mucoepidermoid carcinoma Explanation: Among primary parotid malignant tumors, mucoepidermoid carcinoma is the most common, followed by adenocystic carcinoma. Reference : Bailey & love, 27th Edition, page no = 789.
+[3] Question: Which of the following is not true about the pleomorphic adenoma of parotid gland? Answer: Malignant disease is most common variety Explanation: Superficial parotidectomy is the treatment of choice The ratio of malignant to benign tumors by the as well: parotid gland, 80% benign and 20 % malignant; Submandibular gland and sublingual gland, 50% benign and 50% malignant; and minor salivary glands, 25% benign and 75% malignant Facial nerve palsy is an infrequent presenting complaint and indicate malignancy. Pleomorphic adenoma (mixed tumor): This is the commonest tumor of the major salivary gland and its marked feature id histological diversity. It is called mixed because beside epithelial element there is also myxoid, hyline, chondroid (cailaginous) and even osseous bone. About 90% of pleomorphic adenoma is seen in parotid gland ,7% is seen in submandibular gland. tail of the","Answer: A
+Explanation: Adenoid cystic carcinoma is the most common malignant tumor of the parotid gland.",,,,0,,,,1,N,"Answer A is supported by [3], but the malignant-tumour claim contradicts [1] and [2]."
+grounding,G-415227,"Surgery on the hard palate of a 3 years old cleft patient may inhibit growth, causing the facial profile to become:
+A. Straight
+B. Elongated
+C. Shortened
+D. More concave",D. More concave,(none in dataset),"Student: What is the key clue in this question?
+Tutor: Answer: B
+Explanation: A midline cleft lip is present when there is a crow's nest.",Can you summarise the key point in one sentence?,"[1] Question: Considering the growth of the face in all three planes, growth ceases last in which direction? Answer: Vertical Explanation: For the three planes of space in both the maxilla and mandible, there is a definite sequence in which growth is ""completed"". Growth in width is completed first, then growth in length, and finally growth in height. Growth in width of both jaws, including the width of the dental arches, tends to be completed before the adolescent growth spurt and is affected minimally if at all by adolescent growth changes. In both sexes, growth in vertical height of the face continues longer than growth in length, with the late vertical growth primarily in the mandible. Increases in facial height and concomitant eruption of teeth continue throughout life, but the decline to the adult level. Ref: Contemporary orthodontics 4th ed Proffit, page no 113
+[2] Question: All are related to difficult intubation EXCEPT: Answer: Increased thyromental distance Explanation: ANSWTER: (C) Increased thyromental distanceREF: Morgan 4th ed p. 924Indirect repeat from December 2009Signs of difficult intubation:Thyromental distance < 7cmsMallampatti grade III or IVMicrognathiaMacroglossiaHigh arched palate with narrow dental archTMJ limitationLimited cervical vertebrae extensionMiller signGrowth in oral cavity
+[3] Question: A substantial increase in maxillary width is usually best obtained by placing: Answer: A sutural expansion fixed appliance Explanation: In","Answer: B
+Explanation: Growth in the jaws is related to difficulty intubation.",,,,0,,,,1,N,Mentions jaw growth and intubation from separate snippets but invents a connection.
+grounding,G-368621,"Lipoarabinomannan (LAM) assay in urine is used for screening of?
+A. Mycobacterium tuberculosis
+B. Pneumocystis jirovecii
+C. Histoplasm capsulatum
+D. Cryptococcus neoformans",A. Mycobacterium tuberculosis,Lipoarabinomannan (LAM) is a virulence factor for Mycobacterium tuberculosis. It prevents phagolysosomal fusion. It is secreted in urine so can be used for screening purposes.,,Can you explain the mechanism behind the answer?,"[1] Question: Amphoterecin B toxicity can be lowered by: Answer: Using Liposomal delivery systems Explanation: Nephrotoxicity is the most impoant toxicity associated with the use of amphotericin B. Use of liposomal amphotericin B is associated with much lower nephrotoxicity, minimal anemia and minimal acute reaction on i.v infusion. Ref: Essentials of Medical Pharmacology By KD Tripathi, 5th Edition, Page 716, 717; Lippincott's Pharmacology, 4th Edition, Page 408; Basic and Clinical Pharmacology By Beram G. Katzung, 11th Edition, Page 838, 839, 836, 837.
+[2] Question: Which of the following increases the susceptibility to coronary aery disease - Answer: Nephrotic syndrome Explanation: Nephrotic syndrome Risk factors for atherosclerosis and coronary hea disease Modifiable o Hyperlipidemia o Hypeension o Cigarette smoking o Physical inactivity Nonmodifiable o Old age o Male gender o Family history Diabetes Alcohol Lipoprotein (a) Obesity Postmenopausal Trans-unsaturated fat intake o Chlamydia pneumonae o CMV Stress (type 'A' personality) Homocysteine Prothrombotic factors Hyperlipidemias associated with CAD Primary Type IIa, Type IIb, Type III Secondary -3 Nephrotic syndrome, Hypothyroidism, Cholestasis.
+[3] Question: In Lupus nephritis, characteristic kidney lesion is: Answer: Wire loop lesions Explanation: Answer is C (Wire loop","Answer: A
+Explanation: In Lupus nephritis, characteristic kidney lesion is called Wire loop lesions. The following is a description of the mechanism behind the following. [4]",,,,1,,,,1,Y,
+grounding,G-185631,"Who discovered the structure and amino acid sequence of insulin as well as the interspecies differences in molecular structure and won the Nobel prize for?
+A. Prof. JJ Abel
+B. Frederick Sanger
+C. Rutter, Goodman and Uhlich
+D. Frederick Banting and Charles Best",B. Frederick Sanger,"Ans: b. Frederick Sanger /Ref Lehninger 5/e p903-904, 292)Frederick Sanger discovered the structure and amino acid sequence of insulin as well as the interspecies differences in molecular structure and got the Nobel Prize for that.Fredrick Sanger again with Walter Gil,be got Nobel prize in 1980Jim sequencing of large nucleic acid (DNA) molecule.""",,Why is that the correct answer?,"[1] Question: Noble prize for sequencing insulin aminoacid sequence & molecular structure was given to: Answer: Sanger Explanation: Sanger
+[2] Question: Inhibition of glycogenolysis and gluconeogenesis is caused by Answer: Insulin Explanation: Insulin, a key inhibitor of hepatic glucose production, has effects on both glycogenolysis and gluconeogenesisRef: DM Vasudevan, 7th edition
+[3] Question: Insulin stimulates all except - Answer: Lipolysis Explanation: LipolysisEffect of insulin on major metabolic pathway (effects of carbohydrate feeding)PathwayEffectRegulated enzymeCarbohydrate metabolismo Glycolysis|| Phosphofructokinase-1Q , | Pyruvate kinaseQ| Pyruvate dehydrogenaseo Giuconeogenesis|Q| Pyruvate carboxylase, |PEP carboxykinase, |fhictose-l ,6-bisphophatase| glucose-6-phosphotaseo Glycogenesiso Glycogenolysis||| glucokinase, | glycogen synthase| glycogen phosphorylaseLipid metabolismo Lipogenesiso Lipo lysiso Cholesterol Synthesiso Triacyl glycerol Synthesiso Lipoprotein degradation|||||| Acetyl-Co carboxylaseQ, T Fatty acid synthase| Hormone sensitive lipaseQ| HMG-CoA reductase| Acyl-CoA-glycerol-3-phosphate transferase, T glycerol","Answer: C
+Explanation: Insulin stimulates all except - Answer: Lipolysis Explanations: Insuline stimulates - Lipolytic enzymes Glucose metabolismo Glycolysis - Phosphofructokinase-1Q - Pyruvate kinases - Gluconeogenesis - Glycogenolysis Glucogeneolysis Glyconeomes glucositose - Fhictosio-l ,6-bisphophatasa - glucose-6-",,,,1,,,,1,Y,
+grounding,G-673990,"Transmits which disease
+A. Kyasanur forest disease
+B. Scrub typhus
+C. Japanese encephalitis
+D. Leptospirosis",B. Scrub typhus,"Trombiculid mite is a vector of chiggerosis or Scrub typhus which is caused by Orientia Tsutsugamushi. Scrub typhus causes fever, myalgia and black Eschar. Kyasanur forest disease is transmitted to humans through the bite of infected hard ticks. Japanese encephalitisvirus is transmitted to humans through the bite of infected Culex species mosquitoes, paicularlyCulex tritaeniorhynchus. Leptospirosis transmitted through rodents",,Can you recommend a good movie for tonight?,"[1] Question: Kyasanur forest disease (KFD) is transmitted by- Answer: Ticks Explanation: Kyasanur forest disease is a tick-borne viral hemorrhagic fever currently confined to a small focus in Karnataka ,India .Monkeys are the principal hosts. Clinical features include hemorrhage ,pulmonary oedema, neurological features ,iridokeratitis in survivors. Reference: Harrison20th edition pg 987
+[2] Question: Which of the following viral infections is transmitted by tick - Answer: Kyasanur forest disease (KFD) Explanation: Kyasanur forest disease (KFE))
+[3] Question: Not transmitted by mite - Answer: Kyasanur forest disease Explanation: Kyanasur Forest disease o Mites are the vectors for the following diseasesDiseasesVectorScabiesItch miteScrub TyphusTrombiculid miteRickettsial poxTrombiculidmite","Answer: A
+Explanation: A movie is a movie that is rated R. It is based on a true story. It has a lot of action and is acted by a cast of actors. It also has sex scenes. The movie is about a man who is bitten by worms. It was released in the United States on March 16, 2017.",,,,0,,,,0,Y,
+grounding,G-970493,"A middle aged lady was found in a robbed room lying in a pool of blood on forensic examination there was an entry wound of size around 2 x 2 cm on the left temporal region with tattooing and blackening around the wound. There was also an exit wound with beveling at the right temporal region. On fuher examination two bullet fragments were found inside the brain parenchyma. Which of the following could be used to determine the distance from which the weapon was fired?
+A. Hair
+B. Clothes
+C. Bullet fragments
+D. Blood",A. Hair,To calculate the distance from which weapon was fired we have to find range.To calculate blood and bullet fragments are not suitable since they are very small and blood being a liquid is not suitable.Out of hair and clothes since hair is more on head so it is most suitable to calculate range.,,What is the key clue in this question?,"[1] Question: Tattooing in entry wound of a firearm injury is due to: Answer: Gunpowder Explanation: Effects of different discharges from a gun: Fire / Flame -- burning at entrance wound along with burning or singeing of hairs. Smoke - Blackening effect or smudging Hot gases- Scorching effect Unburnt Gun powder - Tattooing effect, peppering or stippling effect Felt wad - Minor abrasion and bruise. Bullet / Pellet - Puncture wound with abrasion collar.
+[2] Question: Tattoing in entry wound of a firearm injury is due to- Answer: Gun powder Explanation: Gun powder AssociateInjury causedRange1. FlameBuring (Singeing) of hair Buring/melting/ironing of clothesShot gun -15 cm Rifled weapon - 8 cm2. HeatScrotching of skinShot gun -15 cm Rifled weapon - 8 cm3. Smoke and carbon particlesBlackeing Smoke deposition (Smudging/fouling)30 cm4. Gun powder (unburnt and partly burnt)Tattooing (stippling/pepping)60 - 90 cm5. Wads (in shotgun)Abrasion/contusion5 yards
+[3] Question: A case of murder with gunshot is being investigated. A metal bullet is recovered from the body. Primary and secondary markings on a metal bullet can be used for which of the following leads? Answer: Identification of weapon Explanation: An examination","Answer: C
+Explanation: A person is a person. A person who is armed with a gun is able to shoot a target. A gun is not a weapon. [4]",,,,0,,,,0,Y,

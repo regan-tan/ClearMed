@@ -90,7 +90,7 @@ Citation buttons open the passage in the right panel. Assistant replies, MCQ exp
 
 The header switch toggles between **Notebook**, **Practice MCQ** and **Flashcards**. Practice mode shows the question bank, the MCQ card (select an option, then _Check answer_ to reveal the answer key and the model explanation) and a follow-up chat with retrieved evidence. The sliders button in the header opens the search settings (embedding model and top-k). They apply in every mode: notebook chat, flashcard questions and MCQ follow-ups. Answers are saved locally, and an answered question can be added to flashcards.
 
-Practice mode uses the MCQ adapter in [`src/api/client.ts`](src/api/client.ts) (types in [`src/api/types.ts`](src/api/types.ts)), which defaults to the mock in [`src/api/mock.ts`](src/api/mock.ts). Run with `VITE_USE_MOCK=false` to call the FastAPI backend; Vite proxies `/api/*` to `http://localhost:8000`.
+Practice mode uses the MCQ adapter in [`src/api/client.ts`](src/api/client.ts) (types in [`src/api/types.ts`](src/api/types.ts)), which defaults to the mock in [`src/api/mock.ts`](src/api/mock.ts). Run with `VITE_USE_MOCK=false` to call the FastAPI backend; Vite proxies `/api/*` to `http://localhost:8000`. The real backend is `scripts/serve_demo.py` (Part II tutor); see [docs/demo.md](../docs/demo.md).
 
 | Method | Path                          | Body              | Returns            |
 | ------ | ----------------------------- | ----------------- | ------------------ |

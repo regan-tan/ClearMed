@@ -1,0 +1,33 @@
+{
+  "calibration_run": "outputs/retrieval/calibration/calibration-20261101/calibration.json",
+  "frozen_at": "2026-10-31T16:34:59+00:00",
+  "judgments_sha256": "d80e52a62bd1f74fc435cc6824c36d0ea766c1e8e32eb104a6aac156ff90dfe2",
+  "note": "Calibrated on stage A (internal_dev) only. Never retune on validation.",
+  "pool_id": "pool-20261020b",
+  "thresholds": {
+    "biolord_2023": {
+      "f1": 0.6222222222222223,
+      "n": 80,
+      "n_positive": 23,
+      "precision": 0.6363636363636364,
+      "recall": 0.6086956521739131,
+      "threshold": 0.6483476161956787
+    },
+    "e5_base_v2": {
+      "f1": 0.68,
+      "n": 80,
+      "n_positive": 23,
+      "precision": 0.6296296296296297,
+      "recall": 0.7391304347826086,
+      "threshold": 0.8666315078735352
+    },
+    "minilm": {
+      "f1": 0.6666666666666667,
+      "n": 80,
+      "n_positive": 26,
+      "precision": 0.55,
+      "recall": 0.8461538461538461,
+      "threshold": 0.6732112169265747
+    }
+  }
+}
