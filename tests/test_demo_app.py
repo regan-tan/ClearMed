@@ -122,6 +122,20 @@ def test_questions_match_the_frontend_contract_without_the_reference_explanation
     assert "SECRET" not in json.dumps(question)
 
 
+def test_shared_frontend_contract_matches_the_complete_api_flow():
+    fixture = json.loads((Path(__file__).parent / "fixtures" / "demo_api.json").read_text("utf-8"))
+    api, calls, generator = client(predicted="B")
+    assert api.get("/api/health").json() == fixture["health"]
+    assert api.get("/api/questions").json() == fixture["questions"]
+    assert api.post("/api/questions/v1/predict").json() == fixture["prediction"]
+    response = api.post("/api/follow-up", json=fixture["follow_up_request"])
+    assert response.status_code == 200
+    assert response.json() == fixture["follow_up"]
+    assert len(calls) == 1  # Follow-ups reuse the model prediction, not the gold key.
+    assert set(calls[0]) == {"id", "question", "opa", "opb", "opc", "opd"}
+    assert "SECRET" not in generator.prompts[0]
+
+
 def test_predict_sends_only_question_and_options_and_is_cached():
     api, calls, _ = client()
     first = api.post("/api/questions/v1/predict").json()

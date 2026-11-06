@@ -1,0 +1,19 @@
+{
+  "description": "Synthetic contract fixture using test_demo_app's fake predictor, retriever and StubGenerator. Not real model output or medical evidence.",
+  "health": {"status": "ready", "question_count": 1, "embedding_models": ["minilm", "e5", "biolord"], "gate_enabled": true},
+  "questions": [{
+    "id": "v1",
+    "question": "Which drug should be avoided in asthma?",
+    "options": {"A": "vitamin", "B": "losartan", "C": "propranolol", "D": "thiazide"},
+    "correct": "C",
+    "subject": "Pharmacology",
+    "topic": "Autonomic"
+  }],
+  "prediction": {"question_id": "v1", "predicted": "B", "explanation": "LoRA explanation."},
+  "follow_up_request": {"question_id": "v1", "history": [], "message": "Why is that the correct answer?", "embedding_model": "minilm", "top_k": 1},
+  "follow_up": {
+    "reply": "Answer: B\nExplanation: stub reply using 3 evidence passage(s).",
+    "fallback": false,
+    "evidence": [{"id": "d1", "text": "Question: Q1? Answer: X Explanation: passage 1 text", "subject": "Pharmacology", "score": 0.9}]
+  }
+}

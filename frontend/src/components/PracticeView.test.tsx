@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Question } from '../api/types'
 import { PracticeView } from './PracticeView'
+import contract from '../../../tests/fixtures/demo_api.json'
 
 vi.hoisted(() => vi.stubEnv('VITE_USE_MOCK', 'false'))
 
@@ -39,6 +40,26 @@ afterEach(() => {
 })
 
 describe('Practice MCQ with the HTTP adapter', () => {
+  it('completes question, prediction and follow-up using the shared FastAPI contract', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
+    fetchMock.mockResolvedValueOnce(json(contract.questions))
+      .mockResolvedValueOnce(json(contract.prediction))
+      .mockResolvedValueOnce(json(contract.follow_up))
+    render(<PracticeView model="minilm" topK={1} flashcardOrigins={[]} onFlashcard={vi.fn()} />)
+    await screen.findByRole('heading', { name: contract.questions[0].question })
+    await userEvent.click(screen.getByRole('button', { name: /propranolol/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))
+    await screen.findByText(contract.prediction.explanation)
+    expect(screen.getByText('(differs from the answer key)')).toBeInTheDocument()
+    await userEvent.type(screen.getByRole('textbox', { name: 'Follow-up question' }), contract.follow_up_request.message)
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByText(/stub reply using 3 evidence passage/)).toBeInTheDocument()
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toEqual(contract.follow_up_request)
+    await userEvent.click(screen.getByRole('button', { name: '1 retrieved passage' }))
+    expect(screen.getByText(contract.follow_up.evidence[0].text)).toBeInTheDocument()
+    expect(screen.getByText(contract.follow_up.evidence[0].id)).toBeInTheDocument()
+  })
+
   it('loads questions, submits only the ID, and distinguishes the model from the answer key', async () => {
     let finish!: (response: Response) => void
     fetchMock.mockResolvedValueOnce(json([first]))

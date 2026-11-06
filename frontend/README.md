@@ -126,6 +126,15 @@ Practice mode uses the MCQ adapter in [`src/api/client.ts`](src/api/client.ts) (
 
 `FollowUpResponse.fallback` is `true` when retrieval found insufficient evidence; `reply` is then the fixed fallback message, not model output.
 
+Question banks, predictions and follow-up responses are validated before rendering.
+Empty banks and request failures offer retries. Prediction failure preserves the student's
+saved answer; follow-up retries preserve the original message, history and search settings.
+Request errors never become assistant turns in later history. A low-confidence fallback
+is displayed separately from request errors, with any returned passages available to inspect.
+
+For the complete startup, health/proxy checks and troubleshooting workflow, see
+[the integration guide](../docs/demo.md#check-the-complete-connection).
+
 ## Flashcards mode
 
 Cards live in `src/flashcards.ts` (type, Leitner-style scheduling) and are rendered by [`src/components/FlashcardsView.tsx`](src/components/FlashcardsView.tsx).

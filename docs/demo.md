@@ -19,6 +19,9 @@ so the card can reveal it after the student checks their answer.
 
 ## Start it
 
+Install the locked dependencies first: `uv sync --frozen` from the repository root
+and `npm ci` from `frontend/`. Python 3.11 is the documented training/runtime setup.
+
 Before loading models, check the local files from the repository root:
 
 ```bash
@@ -60,6 +63,75 @@ VITE_USE_MOCK=false npm run dev
 ```
 
 Open the address Vite prints and switch to **Practice MCQ**.
+
+Alternatively, copy `frontend/.env.example` to `frontend/.env.local` (preserve any
+existing local settings), then use `npm run dev` without the inline environment
+variable. The example enables backend mode. Set `CLEARMED_BACKEND_URL` to the backend
+origin if it uses another host or port, such as `http://127.0.0.1:8001`; do not append
+`/api`. Restart Vite after changing settings.
+
+## Check the complete connection
+
+1. Open `http://127.0.0.1:8000/api/health` after backend startup and confirm `status`
+   is `ready`. Then open `/api/health` on the Vite origin to check the proxy too.
+2. In **Practice MCQ**, confirm the header says **Practice backend**. This identifies
+   the selected adapter, not server health. Without `VITE_USE_MOCK=false`, Practice
+   defaults to **Practice preview**. Notebook and Flashcards remain previews.
+3. Select a question and check an answer. The answer key is shown immediately;
+   the model prediction and explanation load separately. A wrong model prediction
+   is labelled as differing from the answer key. Refreshing preserves the student's
+   answer and reloads the model explanation.
+4. Send a follow-up, then expand its retrieved passages. Verify passage identifiers,
+   text and similarity scores. Change the embedding model or top-k in search settings
+   and send another turn. Only completed conversation turns enter later history.
+5. A low-confidence result shows **Insufficient evidence**, the fixed fallback, and
+   any returned passages. A network/model error instead offers **Retry follow-up**,
+   which resends the original message, history and search settings without adding
+   an error message to tutor history. Switching questions resets that conversation.
+
+An empty question bank has an explicit empty state and retry. Invalid response data
+is rejected rather than replaced with mock answers. Missing explanations are stated
+explicitly, without inventing text.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| Artifact preflight fails | Restore the existing checkpoint, corpus and three index runs, or select their existing paths. See the reported filenames. |
+| Preflight passes but startup fails | Read the loader error: files may be incompatible/corrupt or the pretrained model/dataset caches may be unavailable. File presence alone does not prove readiness. |
+| Practice still says preview | Set `VITE_USE_MOCK=false` and restart Vite; rebuild if serving a production bundle. |
+| Backend health works but Vite `/api/health` fails | Check `CLEARMED_BACKEND_URL` and restart Vite. |
+| Cannot reach backend / proxy error | Wait for startup to finish, verify the backend port and inspect both terminal logs. No mock fallback occurs. |
+| Prediction returns MALFORMED | The model failed to produce A–D; retry is available, and the answer key is never substituted as a prediction. |
+
+Production hosting must route same-origin `/api` requests to FastAPI; the Vite
+development proxy is not included in static build output.
+
+## Regression checks
+
+From the repository root:
+
+```bash
+HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 uv run pytest -v
+uv run ruff check .
+git diff --check
+```
+
+From `frontend/`:
+
+```bash
+npm run test
+npm run lint
+VITE_USE_MOCK=false npm run build
+```
+
+The API and UI suites share `tests/fixtures/demo_api.json`, a **synthetic** contract
+fixture. FastAPI verifies its responses against this fixture; the UI tests consume
+it through the HTTP adapter for the complete question → prediction → follow-up →
+evidence flow. Other tests cover retries, malformed data, saved answers, fallbacks,
+history and late responses. These tests do not load trained models or prove model
+quality, network deployment or browser rendering. Complete the manual connection
+checks above once the trained artifacts and caches are available.
 
 ## Gate on or off
 
