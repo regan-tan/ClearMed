@@ -71,6 +71,48 @@ def follow_up(**overrides):
             "embedding_model": "minilm", "top_k": 3, **overrides}
 
 
+@pytest.mark.parametrize("gate_off", [False, True])
+def test_health_reports_loaded_service_without_running_inference(gate_off):
+    api, calls, generator = client(gate_off=gate_off)
+    response = api.get("/api/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready", "question_count": 1,
+                               "embedding_models": ["minilm", "e5", "biolord"],
+                               "gate_enabled": not gate_off}
+    assert calls == [] and generator.prompts == []
+
+
+def test_build_service_checks_artifacts_before_loading_models(monkeypatch):
+    def missing(args):
+        raise ValueError("Missing local artifacts")
+
+    monkeypatch.setattr(SERVE, "check_artifacts", missing)
+    with pytest.raises(ValueError, match="Missing local artifacts"):
+        SERVE.build_service(None)
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_check_artifacts_cli_exits_without_building_service(monkeypatch, capsys, fails):
+    def check(args):
+        if fails:
+            raise ValueError("Missing local artifacts")
+
+    def unexpected(args):
+        pytest.fail("Check-only mode must not load models")
+
+    monkeypatch.setattr(SERVE, "check_artifacts", check)
+    monkeypatch.setattr(SERVE, "build_service", unexpected)
+    monkeypatch.setattr(sys, "argv", ["serve_demo.py", "--adapter-dir", "unused", "--check-artifacts"])
+    if fails:
+        with pytest.raises(SystemExit) as error:
+            SERVE.main()
+        assert error.value.code == 2
+        assert "Missing local artifacts" in capsys.readouterr().err
+    else:
+        SERVE.main()
+        assert "have not been checked" in capsys.readouterr().out
+
+
 def test_questions_match_the_frontend_contract_without_the_reference_explanation():
     api, _, _ = client()
     [question] = api.get("/api/questions").json()

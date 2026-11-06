@@ -172,6 +172,12 @@ class TutorService:
 def create_app(service: TutorService) -> FastAPI:
     app = FastAPI(title="ClearMed demo", description=__doc__)
 
+    @app.get("/api/health")
+    def health() -> dict[str, Any]:
+        # The CLI constructs the app only after all models and demo questions load.
+        return {"status": "ready", "question_count": len(service.questions),
+                "embedding_models": list(UI_MODELS), "gate_enabled": not service.gate_off}
+
     def _lookup(call: Callable[[], Any]) -> Any:
         try:
             return call()

@@ -19,6 +19,23 @@ so the card can reveal it after the student checks their answer.
 
 ## Start it
 
+Before loading models, check the local files from the repository root:
+
+```bash
+uv run python scripts/serve_demo.py --adapter-dir checkpoints/flan_t5_lora/flan-base-full-seed42/best --check-artifacts
+```
+
+This reports missing or empty checkpoint, tokenizer, corpus, index and configuration
+files together, and checks configuration JSON syntax. It reads the passage filename
+from the corpus configuration. It does not download, regenerate or modify artifacts.
+Use `--corpus-run` and `--index-run` if your existing artifacts use different run paths.
+Normal startup runs the same preflight before loading models.
+
+Passing this check does **not** verify model weights, corpus checksums, embedding
+compatibility or Hugging Face model/dataset caches. Those are checked or loaded by
+the existing loaders during normal startup. Restore the completed experiment artifacts
+when files are missing; do not retrain just to start the demo.
+
 Terminal 1, from the repository root (needs the checkpoint, the retrieval indexes and the cached
 MedMCQA dataset):
 
@@ -27,6 +44,12 @@ uv run python scripts/serve_demo.py --adapter-dir checkpoints/flan_t5_lora/flan-
 ```
 
 Loading takes about a minute. Wait for `Uvicorn running on http://127.0.0.1:8000`.
+
+After startup, `GET /api/health` returns `status: "ready"`, the question count,
+available frontend embedding-model identifiers and whether the gate is enabled.
+This endpoint does not run inference or return local paths. The server only starts
+listening after its models, indexes and question bank load successfully; a connection
+failure while loading is not a ready response. Readiness does not assess reply quality.
 
 Terminal 2:
 
