@@ -20,6 +20,7 @@ export function PracticeView({ model, topK, flashcardOrigins, onFlashcard }: Pro
   const [questions, setQuestions] = useState<Question[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
+  const [loading, setLoading] = useState(true)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [answers, setAnswers] = usePersistentState<Record<string, OptionKey>>('practice-answers', {})
   const [bankOpen, setBankOpen] = useState(false)
@@ -31,11 +32,14 @@ export function PracticeView({ model, topK, flashcardOrigins, onFlashcard }: Pro
       .then(qs => {
         if (!cancelled) {
           setQuestions(qs)
-          setActiveId(id => id ?? qs[0]?.id ?? null)
+          setActiveId(id => qs.some(q => q.id === id) ? id : qs[0]?.id ?? null)
         }
       })
       .catch(e => {
         if (!cancelled) setLoadError(e instanceof Error ? e.message : 'Request failed')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
       })
     return () => {
       cancelled = true
@@ -77,14 +81,15 @@ export function PracticeView({ model, topK, flashcardOrigins, onFlashcard }: Pro
             />
           </ChatPanel>
         ) : (
-          <section className="notebook-panel practice-status">
-            {loadError ? (
+          <section className="notebook-panel practice-status" aria-live="polite">
+            {loadError || !loading ? (
               <>
-                <p>Couldn’t load questions ({loadError}).</p>
+                <p>{loadError ? `Couldn’t load questions (${loadError}).` : 'No practice questions are available.'}</p>
                 <button
                   className="text-link"
                   onClick={() => {
                     setLoadError(null)
+                    setLoading(true)
                     setReload(r => r + 1)
                   }}
                 >

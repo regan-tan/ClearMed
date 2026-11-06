@@ -61,7 +61,7 @@ export function QuestionList({ questions, activeId, answers, onSelect, onCollaps
           )
         })}
       </ul>
-      {!filtered.length && <p className="py-6 text-sm text-fg-muted">No matches. Try another topic.</p>}
+      {questions.length > 0 && !filtered.length && <p className="py-6 text-sm text-fg-muted">No matches. Try another topic.</p>}
     </nav>
   )
 }

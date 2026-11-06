@@ -129,7 +129,7 @@ export function McqCard({ question, answer, onAnswer, inDeck, onFlashcard }: Pro
 
           <div className="mt-3 border-t border-border pt-3">
             <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-fg-muted">
-              Answer explanation
+              Model explanation
             </div>
             {error ? (
               <div>
@@ -160,7 +160,11 @@ export function McqCard({ question, answer, onAnswer, inDeck, onFlashcard }: Pro
                     <span className="text-rose-600 dark:text-rose-400">(differs from the answer key)</span>
                   )}
                 </p>
-                <Markdown className="mt-1.5 text-sm leading-relaxed text-fg">{prediction.explanation}</Markdown>
+                {prediction.explanation.trim() ? (
+                  <Markdown className="mt-1.5 text-sm leading-relaxed text-fg">{prediction.explanation}</Markdown>
+                ) : (
+                  <p className="mt-1.5 text-sm text-fg-muted">The model returned no explanation.</p>
+                )}
               </>
             )}
           </div>
