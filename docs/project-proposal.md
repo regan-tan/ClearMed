@@ -1,5 +1,10 @@
 # ClearMed Study
 
+> **Historical document.** This is the original project proposal. Some of its plans changed. For
+> example, follow-up replies are now written by plain FLAN-T5-base with the LoRA adapter
+> switched off. The final report and the [root README](../README.md) describe the system as
+> built and evaluated.
+
 ## 1. Project Overview
 
 Medical students commonly use question banks with fixed explanations. ClearMed Study investigates how those explanations can become interactive through a retrieval-grounded conversational tutor. The project evaluates both medical question answering and evidence retrieval for follow-up responses. It is for educational use only.
