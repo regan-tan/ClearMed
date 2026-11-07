@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import type { EmbeddingModel } from '../api/types'
+import type { EmbeddingModel, LlmModel } from '../api/types'
 import { plural } from '../utils'
 
 interface Props {
@@ -8,6 +8,10 @@ interface Props {
   onModelChange: (model: EmbeddingModel) => void
   onTopKChange: (topK: number) => void
   onClose: () => void
+  /** Answer/reply models the backend offers; the picker only appears when there is a choice. */
+  llmModels?: LlmModel[]
+  llm?: string
+  onLlmChange?: (id: string) => void
 }
 
 const MODELS: { value: EmbeddingModel; label: string }[] = [
@@ -16,15 +20,15 @@ const MODELS: { value: EmbeddingModel; label: string }[] = [
   { value: 'biolord', label: 'BioLORD-2023 · Biomedical' },
 ]
 
-// Retrieval settings shared by notebook chat, flashcard questions and MCQ follow-ups.
-export function SearchSettings({ model, topK, onModelChange, onTopKChange, onClose }: Props) {
+// Retrieval settings for MCQ follow-ups, plus the answer model when the backend offers more than one.
+export function SearchSettings({ model, topK, onModelChange, onTopKChange, onClose, llmModels = [], llm, onLlmChange }: Props) {
   return (
     <section className="settings-panel" aria-label="Search settings">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold">Search settings</h2>
           <p className="mt-1 text-xs text-fg-muted">
-            How ClearMed finds supporting passages. Applies to notebook chat, flashcard questions and MCQ follow-ups.
+            How ClearMed finds supporting passages. Applies to MCQ follow-ups.
           </p>
         </div>
         <button className="icon-button" onClick={onClose} aria-label="Close settings">
@@ -56,6 +60,18 @@ export function SearchSettings({ model, topK, onModelChange, onTopKChange, onClo
             ))}
           </select>
         </label>
+        {llmModels.length > 1 && onLlmChange && (
+          <label className="text-xs font-medium sm:col-span-2">
+            Answer model
+            <select className="settings-select" value={llm ?? llmModels[0].id} onChange={e => onLlmChange(e.target.value)}>
+              {llmModels.map(option => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
     </section>
   )

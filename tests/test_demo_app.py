@@ -156,12 +156,27 @@ def test_follow_up_uses_the_predicted_answer_and_returns_top_k_evidence():
     api, _, generator = client(predicted="B")
     body = api.post("/api/follow-up", json=follow_up(top_k=5)).json()
     assert body["fallback"] is False and body["reply"].startswith("Answer: B")
-    assert [e["id"] for e in body["evidence"]] == ["d1", "d2", "d3", "d4", "d5"]
+    assert [e["id"] for e in body["evidence"]] == ["d1", "d2", "d3"]  # Only what the reply was written from.
     assert body["evidence"][0] == {"id": "d1", "text": shown(1), "subject": "Pharmacology", "score": 0.9}
     [prompt] = generator.prompts
     assert "propranolol" in prompt and "SECRET" not in prompt and prompt.count("\n[") == 3  # Frozen: 3 passages.
     one = api.post("/api/follow-up", json=follow_up(top_k=1)).json()
-    assert len(one["evidence"]) == 1
+    assert [e["id"] for e in one["evidence"]] == ["d1"]
+
+
+def test_evidence_lists_the_passages_the_prompt_used_not_unused_hits():
+    api, _, generator = client()
+    body = api.post("/api/follow-up", json=follow_up(top_k=5)).json()
+    [prompt] = generator.prompts
+    assert all(f"passage {e['id'][1:]} " in prompt for e in body["evidence"])
+    assert "passage 4 " not in prompt and "d4" not in [e["id"] for e in body["evidence"]]
+
+
+def test_missing_corpus_passage_is_a_server_error_not_an_unknown_question():
+    svc, _, _ = service()
+    svc.passages = {k: v for k, v in PASSAGES.items() if k != "d1"}
+    response = TestClient(create_app(svc), raise_server_exceptions=False).post("/api/follow-up", json=follow_up())
+    assert response.status_code == 500 and "d1" in response.json()["detail"]
 
 
 def test_low_top1_score_gives_the_fixed_fallback_with_the_weak_evidence():
@@ -218,3 +233,58 @@ def test_demo_questions_load_in_config_order_and_require_every_id(tmp_path):
     assert [q["id"] for q in SERVE.load_demo_questions(rows, config)] == ["v2", "v1"]
     with pytest.raises(ValueError, match="not in the validation split"):
         SERVE.load_demo_questions([ROW], config)
+
+
+def add_second_model(svc, predicted="D"):
+    calls = []
+    generator = StubGenerator()
+    tutors = {m: TutorPipeline(generator, stage="demo", retriever=FakeRetriever([0.9, 0.8, 0.7, 0.6, 0.5]),
+                               gate=Gate(m, 0.75), method_id=m, clean_evidence=True) for m in UI_MODELS.values()}
+    svc.add_model("second", "Second model", predict=lambda row: calls.append(row) or
+                  {"predicted_answer": predicted, "generated_explanation": "Second explanation."}, tutors=tutors)
+    return calls, generator
+
+
+def test_models_list_the_default_first_and_requests_without_llm_use_it():
+    svc, calls, _ = service(predicted="B")
+    second_calls, _ = add_second_model(svc)
+    api = TestClient(create_app(svc))
+    assert api.get("/api/models").json() == [{"id": "flan_t5_lora", "label": "FLAN-T5 + LoRA (Part I)"},
+                                            {"id": "second", "label": "Second model"}]
+    assert api.post("/api/questions/v1/predict").json()["predicted"] == "B"
+    assert len(calls) == 1 and second_calls == []
+
+
+def test_llm_selects_the_model_for_prediction_and_follow_up_with_separate_caches():
+    svc, calls, default_generator = service(predicted="B")
+    second_calls, second_generator = add_second_model(svc, predicted="D")
+    api = TestClient(create_app(svc))
+    assert api.post("/api/questions/v1/predict?llm=second").json()["predicted"] == "D"
+    assert api.post("/api/questions/v1/predict?llm=second").json()["predicted"] == "D"
+    assert len(second_calls) == 1 and calls == []  # Cached per model, default model untouched.
+    body = api.post("/api/follow-up", json=follow_up(llm="second")).json()
+    assert body["reply"].startswith("Answer: D") and len(second_generator.prompts) == 1
+    assert default_generator.prompts == []
+    assert api.post("/api/follow-up", json=follow_up()).json()["reply"].startswith("Answer: B")
+    assert len(calls) == 1
+
+
+def test_unknown_model_is_a_404_not_a_silent_fallback():
+    api, calls, _ = client()
+    assert api.post("/api/questions/v1/predict?llm=nope").status_code == 404
+    response = api.post("/api/follow-up", json=follow_up(llm="nope"))
+    assert response.status_code == 404 and "nope" in response.json()["detail"]
+    assert calls == []
+
+
+def test_add_model_rejects_duplicates_incomplete_tutors_and_mixed_gate_settings():
+    svc, _, _ = service()
+    add_second_model(svc)
+    with pytest.raises(ValueError, match="already registered"):
+        add_second_model(svc)
+    with pytest.raises(ValueError, match="Missing tutors"):
+        svc.add_model("third", "Third", predict=lambda row: {}, tutors={})
+    gate_off = {m: TutorPipeline(StubGenerator(), stage="demo", retriever=FakeRetriever([0.9]), gate_off=True,
+                                 method_id=f"{m}_gate_off", clean_evidence=True) for m in UI_MODELS.values()}
+    with pytest.raises(ValueError, match="gate setting"):
+        svc.add_model("fourth", "Fourth", predict=lambda row: {}, tutors=gate_off)

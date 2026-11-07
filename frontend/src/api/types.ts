@@ -11,7 +11,7 @@ export interface Question {
   options: Record<OptionKey, string>
   correct: OptionKey
   subject: string
-  topic?: string
+  topic?: string | null
 }
 
 export interface McqPrediction {
@@ -32,12 +32,19 @@ export interface ChatTurn {
   content: string
 }
 
+export interface LlmModel {
+  id: string
+  label: string
+}
+
 export interface FollowUpRequest {
   question_id: string
   history: ChatTurn[]
   message: string
   embedding_model: EmbeddingModel
   top_k: number
+  /** Answer/reply model id from `listModels`; omitted means the server's default. */
+  llm?: string
 }
 
 export interface FollowUpResponse {
@@ -48,6 +55,7 @@ export interface FollowUpResponse {
 
 export interface TutorApi {
   listQuestions(): Promise<Question[]>
-  predict(questionId: string): Promise<McqPrediction>
+  listModels(): Promise<LlmModel[]>
+  predict(questionId: string, llm?: string): Promise<McqPrediction>
   followUp(req: FollowUpRequest): Promise<FollowUpResponse>
 }

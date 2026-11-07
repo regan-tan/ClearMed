@@ -1,18 +1,13 @@
 import { BookOpen, Moon, SlidersHorizontal, Sun } from 'lucide-react'
 import { useCallback, useRef, useState, type ReactNode } from 'react'
-import { notebookApi } from '../api/notebook'
-import { practicePreview } from '../api/client'
-import type { EmbeddingModel } from '../api/types'
+import type { EmbeddingModel, LlmModel } from '../api/types'
 import { useDismiss } from '../hooks/useDismiss'
-import type { NotebookMeta } from '../notebooks'
 import type { Theme } from '../theme'
-import { NotebookSwitcher } from './NotebookSwitcher'
 import { SearchSettings } from './SearchSettings'
 
-export type Mode = 'notebook' | 'practice' | 'flashcards'
+export type Mode = 'practice' | 'flashcards'
 
 const MODES: { value: Mode; label: ReactNode }[] = [
-  { value: 'notebook', label: 'Notebook' },
   {
     value: 'practice',
     label: (
@@ -25,12 +20,6 @@ const MODES: { value: Mode; label: ReactNode }[] = [
 ]
 
 interface Props {
-  notebooks: NotebookMeta[]
-  notebookId: string
-  onRenameNotebook: (title: string) => void
-  onSelectNotebook: (id: string) => void
-  onCreateNotebook: () => void
-  onDeleteNotebook: () => void
   mode: Mode
   onModeChange: (mode: Mode) => void
   model: EmbeddingModel
@@ -39,9 +28,12 @@ interface Props {
   onTopKChange: (topK: number) => void
   theme: Theme
   onToggleTheme: () => void
+  llmModels?: LlmModel[]
+  llm?: string
+  onLlmChange?: (id: string) => void
 }
 
-// Three columns: brand and notebook on the left, mode switch centred, settings and theme on the right.
+// Three columns: brand on the left, mode switch centred, settings and theme on the right.
 export function AppHeader(props: Props) {
   const { mode, onModeChange, theme, onToggleTheme } = props
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -58,15 +50,6 @@ export function AppHeader(props: Props) {
           </span>
           ClearMed
         </a>
-        <span className="header-divider" />
-        <NotebookSwitcher
-          notebooks={props.notebooks}
-          activeId={props.notebookId}
-          onRename={props.onRenameNotebook}
-          onSelect={props.onSelectNotebook}
-          onCreate={props.onCreateNotebook}
-          onDelete={props.onDeleteNotebook}
-        />
       </div>
 
       <div className="mode-switch" role="group" aria-label="Mode">
@@ -85,11 +68,6 @@ export function AppHeader(props: Props) {
       </div>
 
       <div className="header-actions">
-        {mode === 'practice' ? (
-          <span className="preview-label">{practicePreview ? 'Practice preview' : 'Practice backend'}</span>
-        ) : (
-          notebookApi.preview && <span className="preview-label">Frontend preview</span>
-        )}
         <div className="settings-anchor" ref={settingsRef}>
           <button
             className="icon-button"
@@ -108,6 +86,9 @@ export function AppHeader(props: Props) {
                 onModelChange={props.onModelChange}
                 onTopKChange={props.onTopKChange}
                 onClose={closeSettings}
+                llmModels={props.llmModels}
+                llm={props.llm}
+                onLlmChange={props.onLlmChange}
               />
             </div>
           )}

@@ -3,7 +3,7 @@
 Loads Regan's frozen FLAN-T5 + LoRA checkpoint (MCQ answer), the three
 retrieval indexes and frozen gate thresholds, and the RQ4 reply settings
 (plain FLAN-T5 with the adapter off, cleaned evidence, no-repeat-3), then
-serves http://localhost:8000. Start the frontend with ``VITE_USE_MOCK=false``;
+serves http://localhost:8000. Start the frontend with ``npm run dev``;
 Vite proxies ``/api`` here.
 
     uv run python scripts/serve_demo.py --adapter-dir checkpoints/flan_t5_lora/flan-base-full-seed42/best

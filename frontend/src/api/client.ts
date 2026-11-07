@@ -1,12 +1,4 @@
-import { mockApi } from './mock'
-import type { FollowUpResponse, McqPrediction, Question, TutorApi } from './types'
-
-const mockSetting = import.meta.env.VITE_USE_MOCK
-if (mockSetting !== undefined && mockSetting !== 'true' && mockSetting !== 'false') {
-  throw new Error('VITE_USE_MOCK must be "true" (preview) or "false" (backend).')
-}
-
-export const practicePreview = mockSetting !== 'false'
+import type { FollowUpResponse, LlmModel, McqPrediction, Question, TutorApi } from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
@@ -46,7 +38,7 @@ function hasFourOptions(value: unknown) {
   return isRecord(value) && ['A', 'B', 'C', 'D'].every(key => isText(value[key]))
 }
 
-const httpApi: TutorApi = {
+export const api: TutorApi = {
   listQuestions: async () => {
     const data = await request<unknown>('/questions')
     if (!Array.isArray(data) || data.some(q =>
@@ -58,8 +50,17 @@ const httpApi: TutorApi = {
     }
     return data as Question[]
   },
-  predict: async questionId => {
-    const data = await request<unknown>(`/questions/${encodeURIComponent(questionId)}/predict`, { method: 'POST' })
+  listModels: async () => {
+    const data = await request<unknown>('/models')
+    if (!Array.isArray(data) || data.some(m => !isRecord(m) || !isText(m.id) || !isText(m.label)) ||
+      new Set(data.map(m => m.id)).size !== data.length) {
+      throw new Error('The tutor backend returned an invalid model list.')
+    }
+    return data as LlmModel[]
+  },
+  predict: async (questionId, llm) => {
+    const query = llm ? `?llm=${encodeURIComponent(llm)}` : ''
+    const data = await request<unknown>(`/questions/${encodeURIComponent(questionId)}/predict${query}`, { method: 'POST' })
     if (!isRecord(data) || data.question_id !== questionId || !isLabel(data.predicted) || typeof data.explanation !== 'string') {
       throw new Error('The tutor backend returned an invalid prediction for this question.')
     }
@@ -77,6 +78,3 @@ const httpApi: TutorApi = {
     return data as unknown as FollowUpResponse
   },
 }
-
-// Set VITE_USE_MOCK=false once the FastAPI backend is running.
-export const api: TutorApi = practicePreview ? mockApi : httpApi

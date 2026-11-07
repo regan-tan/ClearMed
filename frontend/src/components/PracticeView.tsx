@@ -11,12 +11,13 @@ import { QuestionList } from './QuestionList'
 interface Props {
   model: EmbeddingModel
   topK: number
+  llm?: string
   flashcardOrigins: string[]
   onFlashcard: (draft: FlashcardDraft) => void
 }
 
 // MCQ practice: question bank, then the MCQ card with its follow-up chat and retrieved evidence.
-export function PracticeView({ model, topK, flashcardOrigins, onFlashcard }: Props) {
+export function PracticeView({ model, topK, llm, flashcardOrigins, onFlashcard }: Props) {
   const [questions, setQuestions] = useState<Question[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
@@ -71,11 +72,12 @@ export function PracticeView({ model, topK, flashcardOrigins, onFlashcard }: Pro
         </div>
         {active ? (
           // key resets MCQ and chat state when switching questions
-          <ChatPanel key={active.id} question={active} embeddingModel={model} topK={topK}>
+          <ChatPanel key={active.id} question={active} embeddingModel={model} topK={topK} llm={llm}>
             <McqCard
               question={active}
               answer={answers[active.id]}
               onAnswer={key => setAnswers(current => ({ ...current, [active.id]: key }))}
+              llm={llm}
               inDeck={flashcardOrigins.includes(`mcq:${active.id}`)}
               onFlashcard={onFlashcard}
             />

@@ -15,13 +15,14 @@ interface Props {
   question: Question
   embeddingModel: EmbeddingModel
   topK: number
+  llm?: string
   // Content shown above the conversation in the same scroll area (the MCQ card).
   children?: ReactNode
 }
 
 const SUGGESTIONS = ['Explain the reasoning', 'Compare the options', 'Review the key concept']
 
-export function ChatPanel({ question, embeddingModel, topK, children }: Props) {
+export function ChatPanel({ question, embeddingModel, topK, llm, children }: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -74,6 +75,7 @@ export function ChatPanel({ question, embeddingModel, topK, children }: Props) {
       message,
       embedding_model: embeddingModel,
       top_k: topK,
+      llm,
     })
   }
 

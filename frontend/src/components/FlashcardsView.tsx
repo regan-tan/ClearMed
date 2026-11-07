@@ -1,24 +1,13 @@
 import clsx from 'clsx'
-import { FileText, Layers, Loader2, RotateCcw, RotateCw, Search, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { Layers, RotateCcw, RotateCw, Search, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import { notebookApi, type NotebookSource, type RetrievalSettings } from '../api/notebook'
-import { createCard, describeDue, nextInterval, reviewCard, type Flashcard } from '../flashcards'
-import { ACCEPTED_SOURCE_TYPES, isUsableSource } from '../sources'
+import { describeDue, nextInterval, reviewCard, type Flashcard } from '../flashcards'
 import { plural } from '../utils'
-import { FlashcardChat } from './FlashcardChat'
 import { Markdown } from './Markdown'
 
 interface Props {
-  notebookId: string
   cards: Flashcard[]
   setCards: Dispatch<SetStateAction<Flashcard[]>>
-  sources: NotebookSource[]
-  selected: string[]
-  onToggleSource: (id: string) => void
-  onAddSources: (files: File[]) => void
-  onRemoveSource: (id: string) => void
-  uploading: boolean
-  retrieval: RetrievalSettings
 }
 
 const CARD_EXIT_MS = 260
@@ -36,24 +25,10 @@ function dueIds(cards: Flashcard[], now = Date.now()) {
     .map(card => card.id)
 }
 
-export function FlashcardsView({
-  notebookId,
-  cards,
-  setCards,
-  sources,
-  selected,
-  onToggleSource,
-  onAddSources,
-  onRemoveSource,
-  uploading,
-  retrieval,
-}: Props) {
-  const fileInput = useRef<HTMLInputElement>(null)
+export function FlashcardsView({ cards, setCards }: Props) {
   const cardButton = useRef<HTMLButtonElement>(null)
   const [search, setSearch] = useState('')
   const [deckOpen, setDeckOpen] = useState(false)
-  const [generating, setGenerating] = useState(false)
-  const [generateError, setGenerateError] = useState<string | null>(null)
   // Ids still to show in this sitting. Cram sessions rotate through cards without rescheduling them.
   const [queue, setQueue] = useState<string[]>(() => dueIds(cards))
   const [cram, setCram] = useState(false)
@@ -71,31 +46,7 @@ export function FlashcardsView({
     `${card.front} ${card.back} ${card.label ?? ''}`.toLowerCase().includes(search.toLowerCase()),
   )
   const nextDue = cards.length ? Math.min(...cards.map(card => card.due)) : null
-  const chosen = selected.filter(id => sources.some(source => source.id === id && isUsableSource(source)))
 
-  async function generate() {
-    if (generating || !chosen.length) return
-    setGenerating(true)
-    setGenerateError(null)
-    try {
-      const generated = await notebookApi.generateFlashcards(notebookId, { source_ids: chosen })
-      const fresh = generated.map(item =>
-        createCard({
-          front: item.front,
-          back: item.back,
-          sourceId: item.source_id,
-          label: sources.find(source => source.id === item.source_id)?.name ?? item.source_name,
-        }),
-      )
-      setCards(all => [...fresh, ...all])
-      if (!cram) setQueue(q => [...q, ...fresh.map(card => card.id)])
-      setDeckOpen(false)
-    } catch {
-      setGenerateError('Couldn’t generate flashcards. Please try again.')
-    } finally {
-      setGenerating(false)
-    }
-  }
   function deleteCard(card: Flashcard) {
     const wasCurrent = card.id === current?.id
     setDeleted({ card, index: cards.findIndex(item => item.id === card.id), wasCurrent })
@@ -181,85 +132,6 @@ export function FlashcardsView({
                 <X size={16} />
               </button>
             </div>
-
-            <section className="generator" aria-label="Generate flashcards">
-              <input
-                ref={fileInput}
-                type="file"
-                multiple
-                accept={ACCEPTED_SOURCE_TYPES}
-                className="hidden"
-                onChange={e => {
-                  onAddSources(Array.from(e.target.files ?? []))
-                  e.target.value = ''
-                }}
-              />
-              {sources.length ? (
-                <>
-                  <p className="generator-title">Generate from your sources</p>
-                  <ul className="generator-sources">
-                    {sources.map(source => (
-                      <li key={source.id}>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={isUsableSource(source) && selected.includes(source.id)}
-                            disabled={!isUsableSource(source)}
-                            onChange={() => onToggleSource(source.id)}
-                          />
-                          <FileText size={14} />
-                          <span title={source.name}>{source.name}</span>
-                        </label>
-                        <button
-                          className="icon-button delete-button"
-                          aria-label={`Delete ${source.name}`}
-                          title="Delete source"
-                          onClick={() => onRemoveSource(source.id)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  <button className="generate-button" disabled={!chosen.length || generating} onClick={generate}>
-                    {generating ? (
-                      <>
-                        <Loader2 size={15} className="animate-spin" />
-                        Generating…
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles size={15} />
-                        Generate flashcards
-                      </>
-                    )}
-                  </button>
-                  <button
-                    className="text-link generator-upload"
-                    disabled={uploading}
-                    onClick={() => fileInput.current?.click()}
-                  >
-                    {uploading ? 'Adding…' : 'Upload more notes'}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="generator-title">Start with your material</p>
-                  <p className="generator-hint">
-                    Upload lecture notes or a textbook chapter and ClearMed will turn it into flashcards.
-                  </p>
-                  <button className="generate-button" disabled={uploading} onClick={() => fileInput.current?.click()}>
-                    <Upload size={15} />
-                    {uploading ? 'Adding…' : 'Upload notes or textbook'}
-                  </button>
-                </>
-              )}
-              {generateError && (
-                <p className="generator-error" role="alert">
-                  {generateError}
-                </p>
-              )}
-            </section>
 
             {cards.length > 0 && (
               <label className="question-search">
@@ -367,10 +239,6 @@ export function FlashcardsView({
                   <kbd>2</kbd>
                 </button>
               </div>
-              {/* key resets the conversation when the next card comes up */}
-              {flipped && (
-                <FlashcardChat key={current.id} notebookId={notebookId} card={current} retrieval={retrieval} />
-              )}
             </div>
           ) : (
             <div className="flashcard-empty">
@@ -379,23 +247,11 @@ export function FlashcardsView({
               </div>
               {!cards.length ? (
                 <>
-                  <h2>Revise straight from your notes.</h2>
+                  <h2>No flashcards yet.</h2>
                   <p>
-                    {sources.length
-                      ? 'Pick the sources to revise and ClearMed will write flashcards from them. Ask about any card while you study; cards you find hard come back sooner.'
-                      : 'Upload lecture notes or a textbook chapter and ClearMed will turn the key concepts into flashcards. Ask about any card while you study; cards you find hard come back sooner.'}
+                    Answer a practice question, then choose “Add to flashcards” to keep it here. Cards you find hard
+                    come back sooner.
                   </p>
-                  {sources.length ? (
-                    <button className="primary-button" disabled={!chosen.length || generating} onClick={generate}>
-                      <Sparkles size={15} />
-                      {generating ? 'Generating…' : `Generate from ${plural(chosen.length, 'source')}`}
-                    </button>
-                  ) : (
-                    <button className="primary-button" disabled={uploading} onClick={() => fileInput.current?.click()}>
-                      <Upload size={15} />
-                      Upload notes or textbook
-                    </button>
-                  )}
                 </>
               ) : (
                 <>

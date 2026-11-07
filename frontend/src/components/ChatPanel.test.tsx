@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ChatPanel } from './ChatPanel'
 
-vi.hoisted(() => vi.stubEnv('VITE_USE_MOCK', 'false'))
 
 const question = {
   id: 'q1', question: 'Which option?', subject: 'Test', correct: 'B' as const,

@@ -1,7 +1,8 @@
 # Running the live demo
 
-The demo connects the frontend's **Practice MCQ** mode to the real ClearMed models. Notebook and
-Flashcards modes stay as labelled previews; they are not part of the Part II system.
+The demo connects the frontend's **Practice MCQ** mode to the real ClearMed models. The
+**Flashcards** mode is a local revision aid built from the practice questions; it is not part
+of the Part II system and makes no model calls.
 
 ## What runs
 
@@ -58,25 +59,21 @@ Terminal 2:
 
 ```bash
 cd frontend
-# PowerShell:  $env:VITE_USE_MOCK="false"; npm.cmd run dev
-VITE_USE_MOCK=false npm run dev
+npm run dev     # PowerShell: npm.cmd run dev
 ```
 
 Open the address Vite prints and switch to **Practice MCQ**.
 
-Alternatively, copy `frontend/.env.example` to `frontend/.env.local` (preserve any
-existing local settings), then use `npm run dev` without the inline environment
-variable. The example enables backend mode. Set `CLEARMED_BACKEND_URL` to the backend
-origin if it uses another host or port, such as `http://127.0.0.1:8001`; do not append
-`/api`. Restart Vite after changing settings.
+The frontend always calls the backend through the Vite `/api` proxy. Set `CLEARMED_BACKEND_URL`
+in `frontend/.env.local` (copy `frontend/.env.example`) if the backend uses another host or
+port, such as `http://127.0.0.1:8001`; do not append `/api`. Restart Vite after changing it.
 
 ## Check the complete connection
 
 1. Open `http://127.0.0.1:8000/api/health` after backend startup and confirm `status`
    is `ready`. Then open `/api/health` on the Vite origin to check the proxy too.
-2. In **Practice MCQ**, confirm the header says **Practice backend**. This identifies
-   the selected adapter, not server health. Without `VITE_USE_MOCK=false`, Practice
-   defaults to **Practice preview**. Notebook and Flashcards remain previews.
+2. In **Practice MCQ**, the question list loads from the backend. If it shows
+   "Cannot reach the tutor backend", the proxy or backend is not reachable.
 3. Select a question and check an answer. The answer key is shown immediately;
    the model prediction and explanation load separately. A wrong model prediction
    is labelled as differing from the answer key. Refreshing preserves the student's
@@ -90,7 +87,7 @@ origin if it uses another host or port, such as `http://127.0.0.1:8001`; do not 
    an error message to tutor history. Switching questions resets that conversation.
 
 An empty question bank has an explicit empty state and retry. Invalid response data
-is rejected rather than replaced with mock answers. Missing explanations are stated
+is rejected rather than replaced with placeholder answers. Missing explanations are stated
 explicitly, without inventing text.
 
 ## Troubleshooting
@@ -99,9 +96,8 @@ explicitly, without inventing text.
 |---|---|
 | Artifact preflight fails | Restore the existing checkpoint, corpus and three index runs, or select their existing paths. See the reported filenames. |
 | Preflight passes but startup fails | Read the loader error: files may be incompatible/corrupt or the pretrained model/dataset caches may be unavailable. File presence alone does not prove readiness. |
-| Practice still says preview | Set `VITE_USE_MOCK=false` and restart Vite; rebuild if serving a production bundle. |
 | Backend health works but Vite `/api/health` fails | Check `CLEARMED_BACKEND_URL` and restart Vite. |
-| Cannot reach backend / proxy error | Wait for startup to finish, verify the backend port and inspect both terminal logs. No mock fallback occurs. |
+| Cannot reach backend / proxy error | Wait for startup to finish, verify the backend port and inspect both terminal logs. Nothing is substituted. |
 | Prediction returns MALFORMED | The model failed to produce A–D; retry is available, and the answer key is never substituted as a prediction. |
 
 Production hosting must route same-origin `/api` requests to FastAPI; the Vite
@@ -122,7 +118,7 @@ From `frontend/`:
 ```bash
 npm run test
 npm run lint
-VITE_USE_MOCK=false npm run build
+npm run build
 ```
 
 The API and UI suites share `tests/fixtures/demo_api.json`, a **synthetic** contract

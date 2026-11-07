@@ -6,35 +6,19 @@ afterEach(() => {
   vi.resetModules()
 })
 
-describe('practice connection mode', () => {
-  it.each([undefined, 'true'])('uses previews for %s', async setting => {
-    vi.stubEnv('VITE_USE_MOCK', setting)
-    const { api, practicePreview } = await import('./client')
-    const { mockApi } = await import('./mock')
-    expect(practicePreview).toBe(true)
-    expect(api).toBe(mockApi)
-  })
-
-  it('uses the same-origin API when backend mode is enabled', async () => {
-    vi.stubEnv('VITE_USE_MOCK', 'false')
+describe('backend connection', () => {
+  it('calls the same-origin API', async () => {
     const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => [] })
     vi.stubGlobal('fetch', fetch)
-    const { api, practicePreview } = await import('./client')
-    expect(practicePreview).toBe(false)
+    const { api } = await import('./client')
     await expect(api.listQuestions()).resolves.toEqual([])
     expect(fetch).toHaveBeenCalledWith('/api/questions', expect.any(Object))
   })
 
-  it('does not substitute mock data when the backend is unavailable', async () => {
-    vi.stubEnv('VITE_USE_MOCK', 'false')
+  it('reports an unavailable backend instead of showing substitute data', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
     const { api } = await import('./client')
     await expect(api.listQuestions()).rejects.toThrow('Cannot reach the tutor backend')
-  })
-
-  it('rejects a mistyped mode instead of silently showing mock data', async () => {
-    vi.stubEnv('VITE_USE_MOCK', 'False')
-    await expect(import('./client')).rejects.toThrow('VITE_USE_MOCK must be')
   })
 })
 
@@ -42,7 +26,6 @@ describe('backend response handling', () => {
   const question = { id: 'q1', question: 'Question?', options: { A: 'a', B: 'b', C: 'c', D: 'd' }, correct: 'B', subject: 'Test' }
 
   async function backend(response: Response) {
-    vi.stubEnv('VITE_USE_MOCK', 'false')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response))
     return (await import('./client')).api
   }
@@ -89,5 +72,24 @@ describe('backend response handling', () => {
     const api = await backend(new Response(JSON.stringify(body)))
     await expect(api.followUp({ question_id: 'q1', history: [], message: 'Why?', embedding_model: 'minilm', top_k: 3 }))
       .rejects.toThrow('invalid follow-up response')
+  })
+
+  it('lists answer models and rejects an invalid or duplicated list', async () => {
+    const models = [{ id: 'flan_t5_lora', label: 'FLAN-T5 + LoRA' }, { id: 'other', label: 'Other' }]
+    expect(await (await backend(new Response(JSON.stringify(models)))).listModels()).toEqual(models)
+    for (const bad of [{}, [{ id: 'a' }], [models[0], models[0]]]) {
+      const api = await backend(new Response(JSON.stringify(bad)))
+      await expect(api.listModels()).rejects.toThrow('invalid model list')
+    }
+  })
+
+  it('sends the chosen model with predictions and omits it by default', async () => {
+    const body = { question_id: 'q1', predicted: 'A', explanation: '' }
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify(body))))
+    const { api } = await import('./client')
+    await api.predict('q1', 'other model')
+    expect(fetch).toHaveBeenLastCalledWith('/api/questions/q1/predict?llm=other%20model', expect.anything())
+    await api.predict('q1')
+    expect(fetch).toHaveBeenLastCalledWith('/api/questions/q1/predict', expect.anything())
   })
 })
