@@ -34,7 +34,9 @@ export function ChatPanel({ question, embeddingModel, topK, llm, children }: Pro
 
   useEffect(() => {
     mounted.current = true
-    return () => { mounted.current = false }
+    return () => {
+      mounted.current = false
+    }
   }, [])
 
   useEffect(() => {
@@ -81,8 +83,9 @@ export function ChatPanel({ question, embeddingModel, topK, llm, children }: Pro
 
   return (
     // Keep the question, reasoning, and supporting evidence in one reading flow.
-    <section className="study-card flex flex-col bg-surface">
-      <div>
+    <section className="study-card flex flex-col overflow-hidden bg-surface">
+      {/* Only the conversation scrolls; the input below stays anchored to the bottom of the card. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-5 py-7 sm:px-10 sm:py-9">
           {children}
 
@@ -121,7 +124,9 @@ export function ChatPanel({ question, embeddingModel, topK, llm, children }: Pro
                   </div>
                   {m.evidence && <EvidenceList evidence={m.evidence} />}
                   {m.fallback && m.evidence && m.evidence.length > 0 && (
-                    <p className="mt-2 text-xs text-fg-muted">These passages did not meet the evidence confidence threshold.</p>
+                    <p className="mt-2 text-xs text-fg-muted">
+                      These passages did not meet the evidence confidence threshold.
+                    </p>
                   )}
                   {m.evidence?.length === 0 && <p className="mt-2 text-xs text-fg-muted">No passages were returned.</p>}
                 </div>
@@ -138,7 +143,9 @@ export function ChatPanel({ question, embeddingModel, topK, llm, children }: Pro
             {error && pending && (
               <div role="alert" className="text-sm text-rose-600 dark:text-rose-400">
                 <p>Couldn’t get a tutor reply ({error}).</p>
-                <button className="mt-2 underline" onClick={() => void submit(pending)}>Retry follow-up</button>
+                <button className="mt-2 underline" onClick={() => void submit(pending)}>
+                  Retry follow-up
+                </button>
               </div>
             )}
             {loading && (
@@ -151,45 +158,43 @@ export function ChatPanel({ question, embeddingModel, topK, llm, children }: Pro
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-3xl px-5 pb-6 sm:px-10">
-        <div className="mb-3 border-t border-border pt-5">
-          <h2 className="text-sm font-semibold">Talk through the reasoning</h2>
-          <p className="mt-1 text-xs text-fg-muted">Ask a follow-up and inspect the supporting passages.</p>
+      <div className="shrink-0">
+        <div className="mx-auto w-full max-w-3xl px-5 pb-4 pt-3 sm:px-10">
+          {messages.length === 0 && !pending && (
+            <div className="mb-2.5 flex flex-wrap gap-2">
+              {SUGGESTIONS.map(s => (
+                <button
+                  key={s}
+                  onClick={() => send(s)}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs text-fg-muted transition hover:border-primary hover:text-accent"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+          <form
+            onSubmit={e => {
+              e.preventDefault()
+              send(input)
+            }}
+            className="notebook-composer"
+          >
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              aria-label="Follow-up question"
+              placeholder="What would you like to understand?"
+              className="min-w-0 flex-1 bg-transparent py-1.5 text-sm outline-none placeholder:text-fg-subtle"
+            />
+            <button type="submit" disabled={!input.trim() || loading} aria-label="Send">
+              <ArrowUp className="h-[18px] w-[18px]" />
+            </button>
+          </form>
+          <p className="mx-1 mt-2 text-[11px] text-fg-muted">
+            Educational research prototype. Not for diagnosis, treatment or clinical decision-making.
+          </p>
         </div>
-        {messages.length === 0 && !pending && (
-          <div className="mb-2.5 flex flex-wrap gap-2">
-            {SUGGESTIONS.map(s => (
-              <button
-                key={s}
-                onClick={() => send(s)}
-                className="rounded-md border border-border px-3 py-1.5 text-xs text-fg-muted transition hover:border-primary hover:text-accent"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-        <form
-          onSubmit={e => {
-            e.preventDefault()
-            send(input)
-          }}
-          className="notebook-composer"
-        >
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            aria-label="Follow-up question"
-            placeholder="What would you like to understand?"
-            className="min-w-0 flex-1 bg-transparent py-1.5 text-sm outline-none placeholder:text-fg-subtle"
-          />
-          <button type="submit" disabled={!input.trim() || loading} aria-label="Send">
-            <ArrowUp className="h-[18px] w-[18px]" />
-          </button>
-        </form>
-        <p className="mx-1 mt-2 text-[11px] text-fg-muted">
-          Educational research prototype. Not for diagnosis, treatment or clinical decision-making.
-        </p>
       </div>
     </section>
   )

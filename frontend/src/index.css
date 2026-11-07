@@ -291,6 +291,9 @@
       border-color 0.15s,
       box-shadow 0.15s;
   }
+  .notebook-composer:hover {
+    border-color: var(--accent-ring);
+  }
   .notebook-composer:focus-within {
     border-color: var(--accent-ring);
     box-shadow: 0 0 0 3px var(--accent-soft);

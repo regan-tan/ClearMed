@@ -21,7 +21,16 @@ const MODELS: { value: EmbeddingModel; label: string }[] = [
 ]
 
 // Retrieval settings for MCQ follow-ups, plus the answer model when the backend offers more than one.
-export function SearchSettings({ model, topK, onModelChange, onTopKChange, onClose, llmModels = [], llm, onLlmChange }: Props) {
+export function SearchSettings({
+  model,
+  topK,
+  onModelChange,
+  onTopKChange,
+  onClose,
+  llmModels = [],
+  llm,
+  onLlmChange,
+}: Props) {
   return (
     <section className="settings-panel" aria-label="Search settings">
       <div className="flex items-start justify-between gap-3">
@@ -51,8 +60,13 @@ export function SearchSettings({ model, topK, onModelChange, onTopKChange, onClo
           </select>
         </label>
         <label className="text-xs font-medium">
-          Source passages
-          <select className="settings-select" value={topK} onChange={e => onTopKChange(Number(e.target.value))}>
+          Passages shown
+          <select
+            className="settings-select"
+            title="How many retrieved passages to display under each reply"
+            value={topK}
+            onChange={e => onTopKChange(Number(e.target.value))}
+          >
             {[1, 3, 5].map(k => (
               <option key={k} value={k}>
                 {plural(k, 'passage')}
@@ -63,7 +77,11 @@ export function SearchSettings({ model, topK, onModelChange, onTopKChange, onClo
         {llmModels.length > 1 && onLlmChange && (
           <label className="text-xs font-medium sm:col-span-2">
             Answer model
-            <select className="settings-select" value={llm ?? llmModels[0].id} onChange={e => onLlmChange(e.target.value)}>
+            <select
+              className="settings-select"
+              value={llm ?? llmModels[0].id}
+              onChange={e => onLlmChange(e.target.value)}
+            >
               {llmModels.map(option => (
                 <option key={option.id} value={option.id}>
                   {option.label}
