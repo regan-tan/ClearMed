@@ -9,7 +9,7 @@ of the Part II system and makes no model calls.
 | Step | Model |
 |---|---|
 | Answer the MCQ (A-D) and explain it | Part I FLAN-T5-base + LoRA (`checkpoints/flan_t5_lora/flan-base-full-seed42/best`) |
-| Find evidence | The embedding model picked in the frontend's search settings (MiniLM, E5-base-v2 or BioLORD-2023) |
+| Find evidence | The embedding model picked in the frontend's search settings (MiniLM by default, or E5-base-v2 or BioLORD-2023) |
 | Decide whether to answer | Frozen top-1 score gate (`configs/retrieval/gate_thresholds.json`), unless `--gate-off` |
 | Write the follow-up reply | Plain FLAN-T5-base (adapter off), up to 3 passages, the frozen RQ4 settings |
 
@@ -136,9 +136,33 @@ fallback message: on the 30 demo questions it answered 11 (MiniLM), 6 (E5) and 8
 follow-ups. To show a reply for every follow-up, start the server with `--gate-off`; those replies
 end with a note saying the confidence check was off.
 
+## Alternative: MedGemma 27B server
+
+The group's MedGemma 27B (`unsloth/medgemma-27b-text-it-bnb-4bit`) + MiniLM server is provided
+separately (`ClearMed_MedGemma27B_MiniLM_Demo.zip`: `serve_medgemma_demo.py`, a Slurm launcher
+and a MiniLM cosine index). It runs on a GPU node (about 21 GB), not on a laptop. Its notes say
+the new MiniLM index differs from the original three indexes, the confidence gate is off and
+uncalibrated, and it is for exploratory demos, not held-out evaluation. It has no authentication:
+never expose it publicly.
+
+It serves the same routes as `serve_demo.py` (plus `/healthz`), so the frontend needs no change:
+
+1. Start the Slurm job and read the compute node name from `clearmed-medgemma-api-<jobid>.log`.
+   Jobs have a 2-hour limit.
+2. Connect to the SMU VPN or campus network, then tunnel the port to your machine:
+   `ssh -N -L 8000:<node>:8000 <user>@<cluster-address>` (the terminal stays silent; leave it open).
+3. `curl localhost:8000/healthz` should report `medgemma-27b-text-it-bnb-4bit`.
+4. Run `npm run dev` in `frontend/` and keep the search model on **MiniLM**; E5 and BioLORD return
+   an error from this server. The first prediction is slow while the model warms up.
+
+Stop any local `serve_demo.py` first: both use port 8000.
+
 ## Notes
 
 - Everything runs on CPU. An MCQ prediction takes about 1-2 s; a follow-up reply a few seconds.
-- The top-k setting controls how many retrieved passages are shown. The reply model always reads
-  the top 3, as in RQ4.
+- The reply model always reads the top 3 passages, as in RQ4. The evidence list under a reply shows
+  those same passages in prompt order; the **Passages shown** setting (1, 3 or 5) only caps how
+  many of them are displayed.
+- `GET /api/models` lists the answer models the server can use (first is the default); the optional
+  `llm` parameter picks one and an unknown id is a 404. With a single model the picker is hidden.
 - If the Hugging Face cache is offline, prefix the command with `HF_DATASETS_OFFLINE=1 HF_HUB_OFFLINE=1`.

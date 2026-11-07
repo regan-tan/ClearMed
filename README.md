@@ -34,7 +34,7 @@ scripts/         thin CLI entry points (listed per part below)
 configs/         Part II frozen settings: retrieval/, conversation/, demo/
 data/            dataset artifacts (git-ignored) + data/retrieval_eval/ (tracked Part II labels and sheets)
 docs/            per-model and per-step documentation (see docs/README.md)
-frontend/        React + Vite study app; Practice MCQ mode talks to the demo backend
+frontend/        React + Vite study app; Practice MCQ talks to the demo backend, Flashcards is local
 tests/           synthetic-data tests; no GPU, network, dataset or checkpoint needed
 ```
 

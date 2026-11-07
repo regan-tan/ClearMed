@@ -31,12 +31,15 @@ retry button. Nothing is substituted.
 ## Modes
 
 The header switches between **Practice MCQ** and **Flashcards**, and has the search
-settings (embedding model and top-k) and the light/dark theme.
+settings (search model, **Passages shown**, and an answer model when the backend offers
+more than one) and the light/dark theme. The search model defaults to MiniLM, which won RQ3.
 
 - **Practice MCQ:** question bank, the MCQ card (select an option, then _Check answer_
   to reveal the answer key and the model explanation) and a follow-up chat with
-  retrieved evidence. Answers are saved in this browser. An answered question can be
-  added to flashcards.
+  retrieved evidence. The chat input stays anchored at the bottom while the conversation
+  scrolls. Drag the divider beside the question list to resize it (arrow keys also work,
+  double-click resets; the width is saved and shared with the Flashcards deck). Answers are
+  saved in this browser. An answered question can be added to flashcards.
 - **Flashcards:** cards come from practice questions. Due cards are shown one at a time
   as a flip card. Click or press <kbd>Space</kbd> to flip, then grade with _Again_
   (<kbd>1</kbd>, back to box 0 and repeated this session) or _Got it_ (<kbd>2</kbd>,
@@ -69,13 +72,24 @@ extra models with `TutorService.add_model` (see `src/clearmed/app/demo.py`).
 
 `FollowUpResponse.fallback` is `true` when retrieval found insufficient evidence; `reply`
 is then the fixed fallback message, not model output. `evidence` lists the passages the
-reply was written from, capped at `top_k`.
+reply was written from, capped at `top_k`. The **Passages shown** setting only changes how
+many are displayed; the reply is always written from the same top passages. The MedGemma demo
+server (see below) shows the top-k retrieved hits instead.
 
 Responses are validated before rendering. Empty banks and request failures offer
 retries. Prediction failure preserves the student's saved answer; follow-up retries
 preserve the original message, history and search settings. Request errors never become
 assistant turns in later history. For the startup, health and proxy checks, see
 [the integration guide](../docs/demo.md#check-the-complete-connection).
+
+## Using the MedGemma 27B demo server
+
+The group's MedGemma 27B + MiniLM server runs on a GPU node and exposes the same routes, so the
+frontend works with it unchanged. Its code is provided separately and is not in this repository
+(`ClearMed_MedGemma27B_MiniLM_Demo.zip`). Differences from `serve_demo.py`: MiniLM only (E5 and
+BioLORD return a 422 error), the confidence gate is off, and there is no `/api/models`, so the
+answer-model picker stays hidden. Setup, the SSH tunnel and a checklist are in
+[the demo guide](../docs/demo.md#alternative-medgemma-27b-server).
 
 ## Project structure
 
@@ -85,7 +99,8 @@ src/
   api/               client.ts (HTTP adapter) and types.ts (contract)
   hooks/useDismiss.ts  Close popovers on Escape or outside click
   components/        AppHeader, PracticeView, McqCard, ChatPanel, QuestionList,
-                     EvidenceList, FlashcardsView, SearchSettings, Markdown
+                     EvidenceList, FlashcardsView, SearchSettings, ColumnResizer, Markdown
+  bankWidth.ts       Limits for the resizable left panel
   flashcards.ts      Flashcard type, scheduling and legacy-deck migration
   storage.ts         localStorage helpers and usePersistentState
   theme.ts, utils.ts Light/dark theme; plural helper
