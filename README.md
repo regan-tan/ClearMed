@@ -34,7 +34,7 @@ scripts/         thin CLI entry points (listed per part below)
 configs/         Part II frozen settings: retrieval/, conversation/, demo/
 data/            dataset artifacts (git-ignored) + data/retrieval_eval/ (tracked Part II labels and sheets)
 docs/            per-model and per-step documentation (see docs/README.md)
-frontend/        React + Vite study app; Practice MCQ mode talks to the demo backend
+frontend/        React + Vite study app; Practice MCQ talks to the demo backend, Flashcards is local
 tests/           synthetic-data tests; no GPU, network, dataset or checkpoint needed
 ```
 
@@ -251,7 +251,7 @@ Labelling and grading guides: [docs/retrieval_labelling_guideline.md](docs/retri
 
 ```bash
 uv run python scripts/serve_demo.py --adapter-dir checkpoints/flan_t5_lora/flan-base-full-seed42/best
-cd frontend && VITE_USE_MOCK=false npm run dev     # PowerShell: $env:VITE_USE_MOCK="false"; npm.cmd run dev
+cd frontend && npm run dev                        # PowerShell: npm.cmd run dev
 ```
 
 Open the Vite address and switch to **Practice MCQ**. See [docs/demo.md](docs/demo.md) and

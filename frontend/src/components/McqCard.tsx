@@ -13,12 +13,15 @@ interface Props {
   answer?: OptionKey
   onAnswer: (key: OptionKey) => void
   inDeck: boolean
+  llm?: string
   onFlashcard: (draft: FlashcardDraft) => void
 }
 
-export function McqCard({ question, answer, onAnswer, inDeck, onFlashcard }: Props) {
+export function McqCard({ question, answer, onAnswer, inDeck, llm, onFlashcard }: Props) {
   const [selected, setSelected] = useState<OptionKey | null>(answer ?? null)
-  const [prediction, setPrediction] = useState<McqPrediction | null>(null)
+  // Tagged with the model that produced it, so a prediction from a previously selected model is never shown.
+  const [loaded, setLoaded] = useState<{ llm?: string; value: McqPrediction } | null>(null)
+  const prediction = loaded && loaded.llm === llm ? loaded.value : null
   const [error, setError] = useState<string | null>(null)
 
   const answered = answer !== undefined
@@ -28,9 +31,12 @@ export function McqCard({ question, answer, onAnswer, inDeck, onFlashcard }: Pro
     if (!answered) return
     let cancelled = false
     api
-      .predict(question.id)
+      .predict(question.id, llm)
       .then(result => {
-        if (!cancelled) setPrediction(result)
+        if (!cancelled) {
+          setLoaded({ llm, value: result })
+          setError(null)
+        }
       })
       .catch(e => {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Request failed')
@@ -38,7 +44,7 @@ export function McqCard({ question, answer, onAnswer, inDeck, onFlashcard }: Pro
     return () => {
       cancelled = true
     }
-  }, [answered, question.id, retry])
+  }, [answered, question.id, llm, retry])
 
   return (
     <section>
@@ -129,7 +135,7 @@ export function McqCard({ question, answer, onAnswer, inDeck, onFlashcard }: Pro
 
           <div className="mt-3 border-t border-border pt-3">
             <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-fg-muted">
-              Answer explanation
+              Model explanation
             </div>
             {error ? (
               <div>
@@ -160,7 +166,11 @@ export function McqCard({ question, answer, onAnswer, inDeck, onFlashcard }: Pro
                     <span className="text-rose-600 dark:text-rose-400">(differs from the answer key)</span>
                   )}
                 </p>
-                <Markdown className="mt-1.5 text-sm leading-relaxed text-fg">{prediction.explanation}</Markdown>
+                {prediction.explanation.trim() ? (
+                  <Markdown className="mt-1.5 text-sm leading-relaxed text-fg">{prediction.explanation}</Markdown>
+                ) : (
+                  <p className="mt-1.5 text-sm text-fg-muted">The model returned no explanation.</p>
+                )}
               </>
             )}
           </div>

@@ -3,7 +3,7 @@
 Loads Regan's frozen FLAN-T5 + LoRA checkpoint (MCQ answer), the three
 retrieval indexes and frozen gate thresholds, and the RQ4 reply settings
 (plain FLAN-T5 with the adapter off, cleaned evidence, no-repeat-3), then
-serves http://localhost:8000. Start the frontend with ``VITE_USE_MOCK=false``;
+serves http://localhost:8000. Start the frontend with ``npm run dev``;
 Vite proxies ``/api`` here.
 
     uv run python scripts/serve_demo.py --adapter-dir checkpoints/flan_t5_lora/flan-base-full-seed42/best
@@ -19,7 +19,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from clearmed.conversation.pipeline import GATE_OFF_SUFFIX, TutorPipeline
 from clearmed.retrieval.embedders import METHOD_IDS
 
 DEMO_PATH = Path("configs/demo/demo_questions.json")
@@ -39,10 +38,17 @@ def load_demo_questions(validation: Any, demo_path: Path = DEMO_PATH) -> list[di
 
 
 def build_service(args: argparse.Namespace) -> Any:
+    check_artifacts(args)
+
     import torch
 
     from clearmed.app.demo import TutorService
-    from clearmed.conversation.pipeline import DenseRetriever, FlanT5Generator
+    from clearmed.conversation.pipeline import (
+        GATE_OFF_SUFFIX,
+        DenseRetriever,
+        FlanT5Generator,
+        TutorPipeline,
+    )
     from clearmed.data.loader import load_medmcqa_split
     from clearmed.retrieval.corpus import load_corpus
     from clearmed.retrieval.embedders import (
@@ -82,6 +88,21 @@ def build_service(args: argparse.Namespace) -> Any:
                         passages={str(p["doc_id"]): p for p in passages}, gate_off=args.gate_off)
 
 
+def check_artifacts(args: argparse.Namespace) -> None:
+    from clearmed.app.startup import check_demo_artifacts
+    from clearmed.retrieval.embedders import CONFIG_DIR
+    from clearmed.retrieval.gate import THRESHOLDS_PATH
+
+    configs = [DEMO_PATH, FROZEN_PATH, *(CONFIG_DIR / f"{method}.json" for method in METHOD_IDS)]
+    if not args.gate_off:
+        configs.append(THRESHOLDS_PATH)
+    check_demo_artifacts(
+        adapter_dir=args.adapter_dir, corpus_run=args.corpus_run,
+        index_dirs={method: Path("outputs/retrieval") / method / args.index_run for method in METHOD_IDS},
+        config_paths=configs,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--adapter-dir", type=Path, required=True, help="Frozen FLAN-T5 + LoRA adapter directory.")
@@ -91,13 +112,26 @@ def main() -> None:
     parser.add_argument("--gate-off", action="store_true", help="Answer every follow-up; replies are labelled.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--check-artifacts", action="store_true", help="Check local artifact files and exit without loading models.")
     args = parser.parse_args()
+
+    if args.check_artifacts:
+        try:
+            check_artifacts(args)
+        except ValueError as error:
+            parser.exit(2, f"{error}\n")
+        print("Local artifact files are present. Model loading, compatibility and dataset/model caches have not been checked.")
+        return
 
     import uvicorn
 
     from clearmed.app.demo import create_app
 
-    app = create_app(build_service(args))
+    try:
+        service = build_service(args)
+    except (OSError, ValueError, KeyError) as error:
+        parser.exit(2, f"ClearMed startup failed: {error}\nSee docs/demo.md for required artifacts and offline cache setup.\n")
+    app = create_app(service)
     print(f"ClearMed demo on http://{args.host}:{args.port} (gate {'off' if args.gate_off else 'on'}).")
     uvicorn.run(app, host=args.host, port=args.port)
 

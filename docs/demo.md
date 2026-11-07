@@ -1,14 +1,15 @@
 # Running the live demo
 
-The demo connects the frontend's **Practice MCQ** mode to the real ClearMed models. Notebook and
-Flashcards modes stay as labelled previews; they are not part of the Part II system.
+The demo connects the frontend's **Practice MCQ** mode to the real ClearMed models. The
+**Flashcards** mode is a local revision aid built from the practice questions; it is not part
+of the Part II system and makes no model calls.
 
 ## What runs
 
 | Step | Model |
 |---|---|
 | Answer the MCQ (A-D) and explain it | Part I FLAN-T5-base + LoRA (`checkpoints/flan_t5_lora/flan-base-full-seed42/best`) |
-| Find evidence | The embedding model picked in the frontend's search settings (MiniLM, E5-base-v2 or BioLORD-2023) |
+| Find evidence | The embedding model picked in the frontend's search settings (MiniLM by default, or E5-base-v2 or BioLORD-2023) |
 | Decide whether to answer | Frozen top-1 score gate (`configs/retrieval/gate_thresholds.json`), unless `--gate-off` |
 | Write the follow-up reply | Plain FLAN-T5-base (adapter off), up to 3 passages, the frozen RQ4 settings |
 
@@ -19,6 +20,26 @@ so the card can reveal it after the student checks their answer.
 
 ## Start it
 
+Install the locked dependencies first: `uv sync --frozen` from the repository root
+and `npm ci` from `frontend/`. Python 3.11 is the documented training/runtime setup.
+
+Before loading models, check the local files from the repository root:
+
+```bash
+uv run python scripts/serve_demo.py --adapter-dir checkpoints/flan_t5_lora/flan-base-full-seed42/best --check-artifacts
+```
+
+This reports missing or empty checkpoint, tokenizer, corpus, index and configuration
+files together, and checks configuration JSON syntax. It reads the passage filename
+from the corpus configuration. It does not download, regenerate or modify artifacts.
+Use `--corpus-run` and `--index-run` if your existing artifacts use different run paths.
+Normal startup runs the same preflight before loading models.
+
+Passing this check does **not** verify model weights, corpus checksums, embedding
+compatibility or Hugging Face model/dataset caches. Those are checked or loaded by
+the existing loaders during normal startup. Restore the completed experiment artifacts
+when files are missing; do not retrain just to start the demo.
+
 Terminal 1, from the repository root (needs the checkpoint, the retrieval indexes and the cached
 MedMCQA dataset):
 
@@ -28,15 +49,85 @@ uv run python scripts/serve_demo.py --adapter-dir checkpoints/flan_t5_lora/flan-
 
 Loading takes about a minute. Wait for `Uvicorn running on http://127.0.0.1:8000`.
 
+After startup, `GET /api/health` returns `status: "ready"`, the question count,
+available frontend embedding-model identifiers and whether the gate is enabled.
+This endpoint does not run inference or return local paths. The server only starts
+listening after its models, indexes and question bank load successfully; a connection
+failure while loading is not a ready response. Readiness does not assess reply quality.
+
 Terminal 2:
 
 ```bash
 cd frontend
-# PowerShell:  $env:VITE_USE_MOCK="false"; npm.cmd run dev
-VITE_USE_MOCK=false npm run dev
+npm run dev     # PowerShell: npm.cmd run dev
 ```
 
 Open the address Vite prints and switch to **Practice MCQ**.
+
+The frontend always calls the backend through the Vite `/api` proxy. Set `CLEARMED_BACKEND_URL`
+in `frontend/.env.local` (copy `frontend/.env.example`) if the backend uses another host or
+port, such as `http://127.0.0.1:8001`; do not append `/api`. Restart Vite after changing it.
+
+## Check the complete connection
+
+1. Open `http://127.0.0.1:8000/api/health` after backend startup and confirm `status`
+   is `ready`. Then open `/api/health` on the Vite origin to check the proxy too.
+2. In **Practice MCQ**, the question list loads from the backend. If it shows
+   "Cannot reach the tutor backend", the proxy or backend is not reachable.
+3. Select a question and check an answer. The answer key is shown immediately;
+   the model prediction and explanation load separately. A wrong model prediction
+   is labelled as differing from the answer key. Refreshing preserves the student's
+   answer and reloads the model explanation.
+4. Send a follow-up, then expand its retrieved passages. Verify passage identifiers,
+   text and similarity scores. Change the embedding model or top-k in search settings
+   and send another turn. Only completed conversation turns enter later history.
+5. A low-confidence result shows **Insufficient evidence**, the fixed fallback, and
+   any returned passages. A network/model error instead offers **Retry follow-up**,
+   which resends the original message, history and search settings without adding
+   an error message to tutor history. Switching questions resets that conversation.
+
+An empty question bank has an explicit empty state and retry. Invalid response data
+is rejected rather than replaced with placeholder answers. Missing explanations are stated
+explicitly, without inventing text.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| Artifact preflight fails | Restore the existing checkpoint, corpus and three index runs, or select their existing paths. See the reported filenames. |
+| Preflight passes but startup fails | Read the loader error: files may be incompatible/corrupt or the pretrained model/dataset caches may be unavailable. File presence alone does not prove readiness. |
+| Backend health works but Vite `/api/health` fails | Check `CLEARMED_BACKEND_URL` and restart Vite. |
+| Cannot reach backend / proxy error | Wait for startup to finish, verify the backend port and inspect both terminal logs. Nothing is substituted. |
+| Prediction returns MALFORMED | The model failed to produce A–D; retry is available, and the answer key is never substituted as a prediction. |
+
+Production hosting must route same-origin `/api` requests to FastAPI; the Vite
+development proxy is not included in static build output.
+
+## Regression checks
+
+From the repository root:
+
+```bash
+HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 uv run pytest -v
+uv run ruff check .
+git diff --check
+```
+
+From `frontend/`:
+
+```bash
+npm run test
+npm run lint
+npm run build
+```
+
+The API and UI suites share `tests/fixtures/demo_api.json`, a **synthetic** contract
+fixture. FastAPI verifies its responses against this fixture; the UI tests consume
+it through the HTTP adapter for the complete question → prediction → follow-up →
+evidence flow. Other tests cover retries, malformed data, saved answers, fallbacks,
+history and late responses. These tests do not load trained models or prove model
+quality, network deployment or browser rendering. Complete the manual connection
+checks above once the trained artifacts and caches are available.
 
 ## Gate on or off
 
@@ -45,9 +136,33 @@ fallback message: on the 30 demo questions it answered 11 (MiniLM), 6 (E5) and 8
 follow-ups. To show a reply for every follow-up, start the server with `--gate-off`; those replies
 end with a note saying the confidence check was off.
 
+## Alternative: MedGemma 27B server
+
+The group's MedGemma 27B (`unsloth/medgemma-27b-text-it-bnb-4bit`) + MiniLM server is provided
+separately (`ClearMed_MedGemma27B_MiniLM_Demo.zip`: `serve_medgemma_demo.py`, a Slurm launcher
+and a MiniLM cosine index). It runs on a GPU node (about 21 GB), not on a laptop. Its notes say
+the new MiniLM index differs from the original three indexes, the confidence gate is off and
+uncalibrated, and it is for exploratory demos, not held-out evaluation. It has no authentication:
+never expose it publicly.
+
+It serves the same routes as `serve_demo.py` (plus `/healthz`), so the frontend needs no change:
+
+1. Start the Slurm job and read the compute node name from `clearmed-medgemma-api-<jobid>.log`.
+   Jobs have a 2-hour limit.
+2. Connect to the SMU VPN or campus network, then tunnel the port to your machine:
+   `ssh -N -L 8000:<node>:8000 <user>@<cluster-address>` (the terminal stays silent; leave it open).
+3. `curl localhost:8000/healthz` should report `medgemma-27b-text-it-bnb-4bit`.
+4. Run `npm run dev` in `frontend/` and keep the search model on **MiniLM**; E5 and BioLORD return
+   an error from this server. The first prediction is slow while the model warms up.
+
+Stop any local `serve_demo.py` first: both use port 8000.
+
 ## Notes
 
 - Everything runs on CPU. An MCQ prediction takes about 1-2 s; a follow-up reply a few seconds.
-- The top-k setting controls how many retrieved passages are shown. The reply model always reads
-  the top 3, as in RQ4.
+- The reply model always reads the top 3 passages, as in RQ4. The evidence list under a reply shows
+  those same passages in prompt order; the **Passages shown** setting (1, 3 or 5) only caps how
+  many of them are displayed.
+- `GET /api/models` lists the answer models the server can use (first is the default); the optional
+  `llm` parameter picks one and an unknown id is a 404. With a single model the picker is hidden.
 - If the Hugging Face cache is offline, prefix the command with `HF_DATASETS_OFFLINE=1 HF_HUB_OFFLINE=1`.

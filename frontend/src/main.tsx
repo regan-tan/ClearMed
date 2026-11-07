@@ -2,9 +2,9 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App'
-import { ensureNotebooks } from './notebooks'
+import { migrateLegacyFlashcards } from './flashcards'
 
-ensureNotebooks()
+migrateLegacyFlashcards()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

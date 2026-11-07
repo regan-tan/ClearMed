@@ -1,12 +1,12 @@
+import { hasStored, readStored, writeStored } from './storage'
+
 export interface Flashcard {
   id: string
   front: string
   back: string
-  /** Short context shown on the card, e.g. the MCQ subject or "From chat". */
+  /** Short context shown on the card, e.g. the MCQ subject. */
   label?: string
-  /** Source the card was generated from; follow-up questions are grounded in it. */
-  sourceId?: string
-  /** Where the card was made from (e.g. `chat:<messageId>`), used to avoid duplicates. */
+  /** Where the card was made from (e.g. `mcq:<questionId>`), used to avoid duplicates. */
   origin?: string
   /** Leitner box: 0 is new or forgotten, higher boxes are reviewed less often. */
   box: number
@@ -15,7 +15,7 @@ export interface Flashcard {
   createdAt: number
 }
 
-export type FlashcardDraft = Pick<Flashcard, 'front' | 'back' | 'label' | 'origin' | 'sourceId'>
+export type FlashcardDraft = Pick<Flashcard, 'front' | 'back' | 'label' | 'origin'>
 
 const DAY = 86_400_000
 const INTERVAL_DAYS = [0, 1, 3, 7, 14, 30]
@@ -39,4 +39,16 @@ export function describeDue(due: number, now = Date.now()) {
   const days = Math.ceil((due - now) / DAY)
   if (days <= 0) return 'Due now'
   return days === 1 ? 'Due tomorrow' : `Due in ${days} days`
+}
+
+/**
+ * Cards used to be stored per notebook. Copy the active notebook's cards into the single deck once,
+ * leaving the old keys untouched.
+ */
+export function migrateLegacyFlashcards() {
+  if (hasStored('flashcards')) return
+  const notebookId = readStored('active-notebook', '')
+  if (!notebookId) return
+  const cards = readStored<Flashcard[]>(`notebook:${notebookId}:flashcards`, [])
+  if (cards.length) writeStored('flashcards', cards)
 }

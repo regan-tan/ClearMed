@@ -1,21 +1,17 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AppHeader } from './AppHeader'
 
+afterEach(cleanup)
+
 describe('AppHeader', () => {
-  it('renders the preview label and switches modes', async () => {
+  it.each(['practice', 'flashcards'] as const)('shows %s as the pressed mode and switches modes', async mode => {
     const onModeChange = vi.fn()
     render(
       <AppHeader
-        notebooks={[{ id: 'notebook-1', title: 'Revision', createdAt: 0 }]}
-        notebookId="notebook-1"
-        onRenameNotebook={vi.fn()}
-        onSelectNotebook={vi.fn()}
-        onCreateNotebook={vi.fn()}
-        onDeleteNotebook={vi.fn()}
-        mode="notebook"
+        mode={mode}
         onModeChange={onModeChange}
         model="e5"
         topK={3}
@@ -27,8 +23,11 @@ describe('AppHeader', () => {
     )
 
     expect(screen.getByText('ClearMed')).toBeInTheDocument()
-    expect(screen.getByText('Frontend preview')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: /practice/i }))
-    expect(onModeChange).toHaveBeenCalledWith('practice')
+    expect(screen.queryByText(/preview/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('Notebook')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /practice/i })).toHaveAttribute('aria-pressed', String(mode === 'practice'))
+    const other = mode === 'practice' ? /flashcards/i : /practice/i
+    await userEvent.click(screen.getByRole('button', { name: other }))
+    expect(onModeChange).toHaveBeenCalledWith(mode === 'practice' ? 'flashcards' : 'practice')
   })
 })

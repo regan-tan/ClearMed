@@ -4,22 +4,28 @@ import { api } from '../api/client'
 import type { EmbeddingModel, OptionKey, Question } from '../api/types'
 import type { FlashcardDraft } from '../flashcards'
 import { usePersistentState } from '../storage'
+import { BANK_DEFAULT, BANK_MIN, bankMax } from '../bankWidth'
 import { ChatPanel } from './ChatPanel'
+import { ColumnResizer } from './ColumnResizer'
 import { McqCard } from './McqCard'
 import { QuestionList } from './QuestionList'
 
 interface Props {
   model: EmbeddingModel
   topK: number
+  llm?: string
   flashcardOrigins: string[]
   onFlashcard: (draft: FlashcardDraft) => void
+  bankWidth: number
+  onBankWidth: (width: number) => void
 }
 
 // MCQ practice: question bank, then the MCQ card with its follow-up chat and retrieved evidence.
-export function PracticeView({ model, topK, flashcardOrigins, onFlashcard }: Props) {
+export function PracticeView({ model, topK, llm, flashcardOrigins, onFlashcard, bankWidth, onBankWidth }: Props) {
   const [questions, setQuestions] = useState<Question[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
+  const [loading, setLoading] = useState(true)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [answers, setAnswers] = usePersistentState<Record<string, OptionKey>>('practice-answers', {})
   const [bankOpen, setBankOpen] = useState(false)
@@ -31,11 +37,14 @@ export function PracticeView({ model, topK, flashcardOrigins, onFlashcard }: Pro
       .then(qs => {
         if (!cancelled) {
           setQuestions(qs)
-          setActiveId(id => id ?? qs[0]?.id ?? null)
+          setActiveId(id => qs.some(q => q.id === id) ? id : qs[0]?.id ?? null)
         }
       })
       .catch(e => {
         if (!cancelled) setLoadError(e instanceof Error ? e.message : 'Request failed')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
       })
     return () => {
       cancelled = true
@@ -64,27 +73,37 @@ export function PracticeView({ model, topK, flashcardOrigins, onFlashcard }: Pro
             }}
             onCollapse={() => setBankOpen(false)}
           />
+          <ColumnResizer
+            label="Resize question list"
+            width={bankWidth}
+            min={BANK_MIN}
+            getMax={bankMax}
+            defaultWidth={BANK_DEFAULT}
+            onChange={onBankWidth}
+          />
         </div>
         {active ? (
           // key resets MCQ and chat state when switching questions
-          <ChatPanel key={active.id} question={active} embeddingModel={model} topK={topK}>
+          <ChatPanel key={active.id} question={active} embeddingModel={model} topK={topK} llm={llm}>
             <McqCard
               question={active}
               answer={answers[active.id]}
               onAnswer={key => setAnswers(current => ({ ...current, [active.id]: key }))}
+              llm={llm}
               inDeck={flashcardOrigins.includes(`mcq:${active.id}`)}
               onFlashcard={onFlashcard}
             />
           </ChatPanel>
         ) : (
-          <section className="notebook-panel practice-status">
-            {loadError ? (
+          <section className="notebook-panel practice-status" aria-live="polite">
+            {loadError || !loading ? (
               <>
-                <p>Couldn’t load questions ({loadError}).</p>
+                <p>{loadError ? `Couldn’t load questions (${loadError}).` : 'No practice questions are available.'}</p>
                 <button
                   className="text-link"
                   onClick={() => {
                     setLoadError(null)
+                    setLoading(true)
                     setReload(r => r + 1)
                   }}
                 >

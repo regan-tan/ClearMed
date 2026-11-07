@@ -1,146 +1,57 @@
-import { FileText, Loader2, NotebookPen, X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
-import { notebookApi, type Citation, type NotebookSummary } from './api/notebook'
-import type { EmbeddingModel } from './api/types'
+import { useEffect, useState, type CSSProperties } from 'react'
+import { api } from './api/client'
+import type { EmbeddingModel, LlmModel } from './api/types'
 import { AppHeader, type Mode } from './components/AppHeader'
-import { ColumnResizer } from './components/ColumnResizer'
-import { ConfirmDialog } from './components/ConfirmDialog'
 import { FlashcardsView } from './components/FlashcardsView'
-import { NotebookChat } from './components/NotebookChat'
-import { NotebookSidebar, type SidebarLayout } from './components/NotebookSidebar'
-import { NotesPanel } from './components/NotesPanel'
 import { PracticeView } from './components/PracticeView'
-import { useNotebook } from './hooks/useNotebook'
-import { createNotebookMeta, DEFAULT_TITLE, deleteNotebookData, notebookStats, type NotebookMeta } from './notebooks'
+import { BANK_DEFAULT } from './bankWidth'
+import { createCard, type Flashcard, type FlashcardDraft } from './flashcards'
 import { usePersistentState } from './storage'
 import { useTheme } from './theme'
-import { plural } from './utils'
+
+const MODES: Mode[] = ['practice', 'flashcards']
 
 export default function App() {
   const { theme, toggle } = useTheme()
-  const [mode, setMode] = usePersistentState<Mode>('mode', 'notebook')
-  const [model, setModel] = usePersistentState<EmbeddingModel>('model', 'e5')
-  const [topK, setTopK] = usePersistentState('top-k', 3)
-  const [sidebarLayout, setSidebarLayout] = usePersistentState<SidebarLayout>('sidebar-layout', {
-    sourcesOpen: true,
-    chatsOpen: true,
-    split: 0.55,
-  })
-  const [columns, setColumns] = usePersistentState('column-widths', DEFAULT_COLUMNS)
-  const layoutRef = useRef<HTMLElement>(null)
-  const sourceInput = useRef<HTMLInputElement>(null)
-
-  // Fallback only matters if storage is unavailable; ensureNotebooks() normally seeds the list at startup.
-  const [fallbackNotebook] = useState(createNotebookMeta)
-  const [storedNotebooks, setNotebooks] = usePersistentState<NotebookMeta[]>('notebooks', [])
-  const notebooks = storedNotebooks.length ? storedNotebooks : [fallbackNotebook]
-  const [activeNotebookId, setActiveNotebookId] = usePersistentState('active-notebook', '')
-  const notebook = notebooks.find(item => item.id === activeNotebookId) ?? notebooks[0]
-
-  // With a real backend the server owns the notebook list; the preview keeps it in this browser.
-  const [notebooksAttempt, setNotebooksAttempt] = useState(0)
-  const [notebooksResult, setNotebooksResult] = useState({ attempt: -1, failed: false })
-  const notebooksState = notebookApi.preview
-    ? 'ready'
-    : notebooksResult.attempt !== notebooksAttempt
-      ? 'loading'
-      : notebooksResult.failed
-        ? 'error'
-        : 'ready'
-  // Shared across StrictMode's double effect run so an empty account gets exactly one first notebook.
-  const firstNotebook = useRef<Promise<NotebookSummary> | null>(null)
+  const [storedMode, setMode] = usePersistentState<Mode>('mode', 'practice')
+  // A mode saved by an older version (e.g. the removed Notebook mode) falls back to Practice.
+  const mode = MODES.includes(storedMode) ? storedMode : 'practice'
   useEffect(() => {
-    if (notebookApi.preview) return
+    if (mode !== storedMode) setMode(mode)
+  }, [mode, storedMode, setMode])
+  const [model, setModel] = usePersistentState<EmbeddingModel>('model', 'minilm')
+  const [topK, setTopK] = usePersistentState('top-k', 3)
+  // The server decides which answer models exist. If the list can't be loaded the picker stays hidden and
+  // requests omit `llm`, so the server's default model answers.
+  const [llmModels, setLlmModels] = useState<LlmModel[]>([])
+  const [storedLlm, setLlm] = usePersistentState('llm', '')
+  const llm = llmModels.find(option => option.id === storedLlm)?.id ?? llmModels[0]?.id
+  useEffect(() => {
     let cancelled = false
-    notebookApi
-      .listNotebooks()
-      .then(async list => {
-        if (list.length) return list
-        firstNotebook.current ??= notebookApi.createNotebook(DEFAULT_TITLE)
-        return [await firstNotebook.current]
-      })
+    api
+      .listModels()
       .then(list => {
-        if (cancelled) return
-        setNotebooks(list.map(({ id, title, createdAt }) => ({ id, title, createdAt })))
-        setNotebooksResult({ attempt: notebooksAttempt, failed: false })
+        if (!cancelled) setLlmModels(list)
       })
-      .catch(() => {
-        if (!cancelled) setNotebooksResult({ attempt: notebooksAttempt, failed: true })
-      })
+      .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [notebooksAttempt, setNotebooks])
+  }, [])
+  const [storedBank, setBankWidth] = usePersistentState('bank-width', BANK_DEFAULT)
+  const bankWidth = Number.isFinite(storedBank) ? storedBank : BANK_DEFAULT
+  const [cards, setCards] = usePersistentState<Flashcard[]>('flashcards', [])
+  const cardOrigins = cards.flatMap(card => (card.origin ? [card.origin] : []))
 
-  const retrieval = { embedding_model: model, top_k: topK }
-  const [error, setError] = useState<string | null>(null)
-  const nb = useNotebook(notebook.id, retrieval, setError)
-
-  const [citation, setCitation] = useState<Citation | null>(null)
-  const [mobilePanel, setMobilePanel] = useState<'sources' | 'notes' | null>(null)
-  const [pendingSourceId, setPendingSourceId] = useState<string | null>(null)
-  const [confirmingNotebookDelete, setConfirmingNotebookDelete] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const closeSourceDialog = useCallback(() => setPendingSourceId(null), [])
-  const closeNotebookDialog = useCallback(() => setConfirmingNotebookDelete(false), [])
-  const pendingSource = nb.sources.find(source => source.id === pendingSourceId)
-
-  function switchNotebook(id: string) {
-    setActiveNotebookId(id)
-    setCitation(null)
-    setError(null)
-    setMobilePanel(null)
-  }
-
-  async function createNotebook() {
-    try {
-      const created = await notebookApi.createNotebook(DEFAULT_TITLE)
-      setNotebooks([...notebooks, { id: created.id, title: created.title, createdAt: created.createdAt }])
-      switchNotebook(created.id)
-      setMode('notebook')
-    } catch {
-      setError('Could not create a notebook. Please try again.')
-    }
-  }
-
-  function renameNotebook(title: string) {
-    setNotebooks(notebooks.map(item => (item.id === notebook.id ? { ...item, title } : item)))
-    notebookApi.renameNotebook(notebook.id, title).catch(() => setError('Could not save the notebook title.'))
-  }
-
-  async function deleteNotebook() {
-    setDeleting(true)
-    try {
-      await notebookApi.deleteNotebook(notebook.id)
-      deleteNotebookData(notebook.id)
-      const remaining = notebooks.filter(item => item.id !== notebook.id)
-      const next = remaining.length ? remaining : [createNotebookMeta()]
-      setNotebooks(next)
-      switchNotebook(next[0].id)
-    } catch {
-      setError('Could not delete the notebook. Please try again.')
-    } finally {
-      setDeleting(false)
-      setConfirmingNotebookDelete(false)
-    }
-  }
-
-  async function deleteSource(id: string, deleteCards: boolean) {
-    setDeleting(true)
-    await nb.removeSource(id, deleteCards)
-    setDeleting(false)
-    setPendingSourceId(null)
+  function addCard(draft: FlashcardDraft) {
+    setCards(current =>
+      draft.origin && current.some(card => card.origin === draft.origin) ? current : [createCard(draft), ...current],
+    )
   }
 
   return (
-    <div className="notebook-app">
+    <div className="notebook-app" style={{ '--bank-w': `${bankWidth}px` } as CSSProperties}>
       <AppHeader
-        notebooks={notebooks}
-        notebookId={notebook.id}
-        onRenameNotebook={renameNotebook}
-        onSelectNotebook={switchNotebook}
-        onCreateNotebook={createNotebook}
-        onDeleteNotebook={() => setConfirmingNotebookDelete(true)}
         mode={mode}
         onModeChange={setMode}
         model={model}
@@ -149,207 +60,26 @@ export default function App() {
         onTopKChange={setTopK}
         theme={theme}
         onToggleTheme={toggle}
+        llmModels={llmModels}
+        llm={llm}
+        onLlmChange={setLlm}
       />
-
-      {error && (
-        <div className="upload-error" role="alert">
-          {error}
-          <button className="icon-button" onClick={() => setError(null)} aria-label="Dismiss error">
-            <X size={16} />
-          </button>
-        </div>
-      )}
 
       {/* Kept mounted so MCQ progress survives switching modes */}
       <div className="mode-view" hidden={mode !== 'practice'}>
-        <PracticeView model={model} topK={topK} flashcardOrigins={nb.cardOrigins} onFlashcard={nb.addCard} />
+        <PracticeView model={model} topK={topK} llm={llm}
+          flashcardOrigins={cardOrigins}
+          onFlashcard={addCard}
+          bankWidth={bankWidth}
+          onBankWidth={setBankWidth}
+        />
       </div>
 
-      {mode !== 'practice' && notebooksState !== 'ready' && (
-        <main className="app-status" role={notebooksState === 'error' ? 'alert' : 'status'}>
-          {notebooksState === 'loading' ? (
-            <>
-              <Loader2 size={18} className="animate-spin" />
-              Loading your notebooks…
-            </>
-          ) : (
-            <>
-              Couldn’t load your notebooks.
-              <button className="text-link" onClick={() => setNotebooksAttempt(n => n + 1)}>
-                Try again
-              </button>
-            </>
-          )}
-        </main>
-      )}
-
-      {mode === 'flashcards' && notebooksState === 'ready' && (
+      {mode === 'flashcards' && (
         <div className="mode-view">
-          <FlashcardsView
-            key={notebook.id}
-            notebookId={notebook.id}
-            cards={nb.cards}
-            setCards={nb.setCards}
-            sources={nb.sources}
-            selected={nb.selected}
-            onToggleSource={nb.toggleSource}
-            onAddSources={nb.addSources}
-            onRemoveSource={setPendingSourceId}
-            uploading={nb.uploading}
-            retrieval={retrieval}
-          />
+          <FlashcardsView cards={cards} setCards={setCards} bankWidth={bankWidth} onBankWidth={setBankWidth} />
         </div>
-      )}
-
-      {mode === 'notebook' && notebooksState === 'ready' && (
-        <>
-          <div className="mobile-panel-tabs">
-            <button
-              onClick={() => setMobilePanel(mobilePanel === 'sources' ? null : 'sources')}
-              aria-expanded={mobilePanel === 'sources'}
-            >
-              <FileText size={15} />
-              Sources & chats
-            </button>
-            <button
-              onClick={() => setMobilePanel(mobilePanel === 'notes' ? null : 'notes')}
-              aria-expanded={mobilePanel === 'notes'}
-            >
-              <NotebookPen size={15} />
-              Notes ({nb.notes.length})
-            </button>
-          </div>
-          <main
-            className="notebook-layout"
-            id="chat"
-            ref={layoutRef}
-            style={{ '--sidebar-w': `${columns.sidebar}px`, '--notes-w': `${columns.notes}px` } as CSSProperties}
-          >
-            <div className={`sources-slot ${mobilePanel === 'sources' ? 'mobile-visible' : ''}`}>
-              <NotebookSidebar
-                sources={nb.sources}
-                selected={nb.readySelected}
-                busy={nb.uploading}
-                onAdd={nb.addSources}
-                onToggle={nb.toggleSource}
-                onSelectAll={nb.toggleAllSources}
-                onRemove={setPendingSourceId}
-                onClose={() => setMobilePanel(null)}
-                chats={nb.chats}
-                activeChatId={nb.activeChatId}
-                onSelectChat={nb.selectChat}
-                onNewChat={nb.newChat}
-                onDeleteChat={nb.deleteChat}
-                layout={sidebarLayout}
-                onLayoutChange={setSidebarLayout}
-                fileInput={sourceInput}
-                loading={nb.sourcesLoading}
-                loadFailed={nb.sourcesFailed}
-                onRetryLoad={nb.retrySources}
-              />
-            </div>
-            <ColumnResizer
-              label="Resize sources and chats panel"
-              side="left"
-              width={columns.sidebar}
-              min={MIN_COLUMNS.sidebar}
-              getMax={() => columnMax(layoutRef.current, '.sources-slot')}
-              defaultWidth={DEFAULT_COLUMNS.sidebar}
-              onChange={sidebar => setColumns(current => ({ ...current, sidebar }))}
-            />
-            <NotebookChat
-              chats={nb.chats}
-              activeId={nb.activeChatId}
-              sourceCount={nb.readySelected.length}
-              busy={nb.sending}
-              error={nb.chatError}
-              onSend={nb.send}
-              onSave={message => nb.addNote(message.content, message.id)}
-              onFlashcard={nb.addCardFromMessage}
-              onCitation={value => {
-                setCitation(value)
-                setMobilePanel('notes')
-              }}
-              onSelectChat={nb.selectChat}
-              onNewChat={nb.newChat}
-              onDeleteChat={nb.deleteChat}
-              onAdd={() => {
-                setMobilePanel('sources')
-                sourceInput.current?.click()
-              }}
-              savedIds={nb.notes.map(note => note.id)}
-              flashcardIds={nb.cardOrigins.flatMap(origin => (origin.startsWith('chat:') ? [origin.slice(5)] : []))}
-            />
-            <ColumnResizer
-              label="Resize notes panel"
-              side="right"
-              width={columns.notes}
-              min={MIN_COLUMNS.notes}
-              getMax={() => columnMax(layoutRef.current, '.notes-panel')}
-              defaultWidth={DEFAULT_COLUMNS.notes}
-              onChange={notes => setColumns(current => ({ ...current, notes }))}
-            />
-            <NotesPanel
-              key={notebook.id}
-              notes={nb.notes}
-              citation={citation}
-              mobileVisible={mobilePanel === 'notes'}
-              onAddNote={nb.addNote}
-              onRemoveNote={nb.removeNote}
-              onCloseCitation={() => setCitation(null)}
-              onClose={() => setMobilePanel(null)}
-            />
-          </main>
-        </>
-      )}
-
-      {pendingSource && (
-        <ConfirmDialog
-          title="Delete this source?"
-          confirmLabel="Delete source"
-          busy={deleting}
-          option={sourceCardsOption(nb.cards.filter(card => card.sourceId === pendingSource.id).length)}
-          onConfirm={deleteCards => deleteSource(pendingSource.id, deleteCards)}
-          onCancel={closeSourceDialog}
-        >
-          <strong>{pendingSource.name}</strong> will be removed from this notebook and won’t be used to answer
-          questions.
-        </ConfirmDialog>
-      )}
-      {confirmingNotebookDelete && (
-        <ConfirmDialog
-          title="Delete this notebook?"
-          confirmLabel="Delete notebook"
-          busy={deleting}
-          onConfirm={deleteNotebook}
-          onCancel={closeNotebookDialog}
-        >
-          <strong>{notebook.title}</strong> and everything in it will be deleted:{' '}
-          {describeContents(notebook.id, nb.notes.length)}. This can’t be undone.
-        </ConfirmDialog>
       )}
     </div>
   )
-}
-
-const DEFAULT_COLUMNS = { sidebar: 280, notes: 280 }
-const MIN_COLUMNS = { sidebar: 200, notes: 220 }
-const MAX_COLUMN = 640
-const MIN_CHAT = 360
-
-// A side panel may only grow into the space the chat column can spare.
-function columnMax(layout: HTMLElement | null, panelSelector: string) {
-  const panel = layout?.querySelector<HTMLElement>(panelSelector)
-  const chat = layout?.querySelector<HTMLElement>('.notebook-chat')
-  if (!panel || !chat) return MAX_COLUMN
-  return Math.min(MAX_COLUMN, panel.offsetWidth + chat.offsetWidth - MIN_CHAT)
-}
-
-function sourceCardsOption(cardCount: number) {
-  return cardCount ? `Also delete the ${plural(cardCount, 'flashcard')} made from it` : undefined
-}
-
-function describeContents(notebookId: string, noteCount: number) {
-  const stats = notebookStats(notebookId)
-  return `${plural(stats.sources, 'source')}, ${plural(stats.chats, 'chat')}, ${plural(noteCount, 'note')} and ${plural(stats.cards, 'flashcard')}`
 }
