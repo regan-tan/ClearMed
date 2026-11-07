@@ -1,13 +1,17 @@
 import clsx from 'clsx'
 import { Layers, RotateCcw, RotateCw, Search, Trash2, X } from 'lucide-react'
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { BANK_DEFAULT, BANK_MIN, bankMax } from '../bankWidth'
 import { describeDue, nextInterval, reviewCard, type Flashcard } from '../flashcards'
 import { plural } from '../utils'
+import { ColumnResizer } from './ColumnResizer'
 import { Markdown } from './Markdown'
 
 interface Props {
   cards: Flashcard[]
   setCards: Dispatch<SetStateAction<Flashcard[]>>
+  bankWidth: number
+  onBankWidth: (width: number) => void
 }
 
 const CARD_EXIT_MS = 260
@@ -25,7 +29,7 @@ function dueIds(cards: Flashcard[], now = Date.now()) {
     .map(card => card.id)
 }
 
-export function FlashcardsView({ cards, setCards }: Props) {
+export function FlashcardsView({ cards, setCards, bankWidth, onBankWidth }: Props) {
   const cardButton = useRef<HTMLButtonElement>(null)
   const [search, setSearch] = useState('')
   const [deckOpen, setDeckOpen] = useState(false)
@@ -171,6 +175,14 @@ export function FlashcardsView({ cards, setCards }: Props) {
               <p className="py-6 text-center text-sm text-fg-muted">No cards match.</p>
             )}
           </nav>
+          <ColumnResizer
+            label="Resize deck"
+            width={bankWidth}
+            min={BANK_MIN}
+            getMax={bankMax}
+            defaultWidth={BANK_DEFAULT}
+            onChange={onBankWidth}
+          />
         </div>
 
         <section className="study-card flashcard-stage bg-surface">

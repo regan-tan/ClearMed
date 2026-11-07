@@ -20,7 +20,7 @@ const prediction = (id = 'first', explanation = 'A model explanation.') =>
   json({ question_id: id, predicted: 'A', explanation })
 
 function show() {
-  return render(<PracticeView model="minilm" topK={3} flashcardOrigins={[]} onFlashcard={vi.fn()} />)
+  return render(<PracticeView model="minilm" topK={3} flashcardOrigins={[]} onFlashcard={vi.fn()} bankWidth={280} onBankWidth={vi.fn()} />)
 }
 
 async function answer() {
@@ -45,7 +45,7 @@ describe('Practice MCQ with the HTTP adapter', () => {
     fetchMock.mockResolvedValueOnce(json(contract.questions))
       .mockResolvedValueOnce(json(contract.prediction))
       .mockResolvedValueOnce(json(contract.follow_up))
-    render(<PracticeView model="minilm" topK={1} flashcardOrigins={[]} onFlashcard={vi.fn()} />)
+    render(<PracticeView model="minilm" topK={1} flashcardOrigins={[]} onFlashcard={vi.fn()} bankWidth={280} onBankWidth={vi.fn()} />)
     await screen.findByRole('heading', { name: contract.questions[0].question })
     await userEvent.click(screen.getByRole('button', { name: /propranolol/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Check answer' }))

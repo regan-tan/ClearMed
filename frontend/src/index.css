@@ -489,7 +489,7 @@
   }
   .practice-layout {
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-columns: var(--bank-w, 280px) minmax(0, 1fr);
     gap: 12px;
     padding: 0 var(--gutter) var(--gutter);
     flex: 1;
@@ -497,6 +497,39 @@
   }
   .bank-slot {
     min-height: 0;
+    position: relative;
+  }
+  /* Drag handle in the gap to the right of the left panel. */
+  .column-resizer {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: -12px;
+    width: 12px;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .column-resizer::after {
+    content: '';
+    position: absolute;
+    inset: 0 4px;
+    border-radius: 2px;
+    background: transparent;
+    transition: background 0.15s;
+  }
+  .column-resizer:hover::after,
+  .column-resizer:focus-visible::after,
+  .column-resizer:active::after {
+    background: var(--accent);
+  }
+  .column-resizer:focus-visible {
+    outline: none;
+  }
+  /* Keep the resize cursor and stop text selection while dragging, even off the handle. */
+  .col-resizing,
+  .col-resizing * {
+    cursor: col-resize !important;
+    user-select: none !important;
   }
   .question-bank {
     height: 100%;
@@ -963,6 +996,9 @@
     width: 100%;
   }
   .bank-slot {
+    display: none;
+  }
+  .column-resizer {
     display: none;
   }
   .bank-slot.mobile-visible {

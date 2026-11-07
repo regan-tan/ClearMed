@@ -4,7 +4,9 @@ import { api } from '../api/client'
 import type { EmbeddingModel, OptionKey, Question } from '../api/types'
 import type { FlashcardDraft } from '../flashcards'
 import { usePersistentState } from '../storage'
+import { BANK_DEFAULT, BANK_MIN, bankMax } from '../bankWidth'
 import { ChatPanel } from './ChatPanel'
+import { ColumnResizer } from './ColumnResizer'
 import { McqCard } from './McqCard'
 import { QuestionList } from './QuestionList'
 
@@ -14,10 +16,12 @@ interface Props {
   llm?: string
   flashcardOrigins: string[]
   onFlashcard: (draft: FlashcardDraft) => void
+  bankWidth: number
+  onBankWidth: (width: number) => void
 }
 
 // MCQ practice: question bank, then the MCQ card with its follow-up chat and retrieved evidence.
-export function PracticeView({ model, topK, llm, flashcardOrigins, onFlashcard }: Props) {
+export function PracticeView({ model, topK, llm, flashcardOrigins, onFlashcard, bankWidth, onBankWidth }: Props) {
   const [questions, setQuestions] = useState<Question[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
@@ -68,6 +72,14 @@ export function PracticeView({ model, topK, llm, flashcardOrigins, onFlashcard }
               setBankOpen(false)
             }}
             onCollapse={() => setBankOpen(false)}
+          />
+          <ColumnResizer
+            label="Resize question list"
+            width={bankWidth}
+            min={BANK_MIN}
+            getMax={bankMax}
+            defaultWidth={BANK_DEFAULT}
+            onChange={onBankWidth}
           />
         </div>
         {active ? (

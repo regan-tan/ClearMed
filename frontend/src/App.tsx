@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { api } from './api/client'
 import type { EmbeddingModel, LlmModel } from './api/types'
 import { AppHeader, type Mode } from './components/AppHeader'
 import { FlashcardsView } from './components/FlashcardsView'
 import { PracticeView } from './components/PracticeView'
+import { BANK_DEFAULT } from './bankWidth'
 import { createCard, type Flashcard, type FlashcardDraft } from './flashcards'
 import { usePersistentState } from './storage'
 import { useTheme } from './theme'
@@ -18,7 +19,7 @@ export default function App() {
   useEffect(() => {
     if (mode !== storedMode) setMode(mode)
   }, [mode, storedMode, setMode])
-  const [model, setModel] = usePersistentState<EmbeddingModel>('model', 'e5')
+  const [model, setModel] = usePersistentState<EmbeddingModel>('model', 'minilm')
   const [topK, setTopK] = usePersistentState('top-k', 3)
   // The server decides which answer models exist. If the list can't be loaded the picker stays hidden and
   // requests omit `llm`, so the server's default model answers.
@@ -37,6 +38,8 @@ export default function App() {
       cancelled = true
     }
   }, [])
+  const [storedBank, setBankWidth] = usePersistentState('bank-width', BANK_DEFAULT)
+  const bankWidth = Number.isFinite(storedBank) ? storedBank : BANK_DEFAULT
   const [cards, setCards] = usePersistentState<Flashcard[]>('flashcards', [])
   const cardOrigins = cards.flatMap(card => (card.origin ? [card.origin] : []))
 
@@ -47,7 +50,7 @@ export default function App() {
   }
 
   return (
-    <div className="notebook-app">
+    <div className="notebook-app" style={{ '--bank-w': `${bankWidth}px` } as CSSProperties}>
       <AppHeader
         mode={mode}
         onModeChange={setMode}
@@ -64,12 +67,17 @@ export default function App() {
 
       {/* Kept mounted so MCQ progress survives switching modes */}
       <div className="mode-view" hidden={mode !== 'practice'}>
-        <PracticeView model={model} topK={topK} llm={llm} flashcardOrigins={cardOrigins} onFlashcard={addCard} />
+        <PracticeView model={model} topK={topK} llm={llm}
+          flashcardOrigins={cardOrigins}
+          onFlashcard={addCard}
+          bankWidth={bankWidth}
+          onBankWidth={setBankWidth}
+        />
       </div>
 
       {mode === 'flashcards' && (
         <div className="mode-view">
-          <FlashcardsView cards={cards} setCards={setCards} />
+          <FlashcardsView cards={cards} setCards={setCards} bankWidth={bankWidth} onBankWidth={setBankWidth} />
         </div>
       )}
     </div>
